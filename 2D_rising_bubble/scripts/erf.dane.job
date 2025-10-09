@@ -1,0 +1,66 @@
+#!/bin/bash
+
+clear
+rootdir=$PWD
+
+write_job () {
+
+# argument 1: filename
+# argument 2: number of nodes
+# argument 3: number of tasks
+
+arg=("$@")
+
+/bin/cat <<EOM >${arg[1]}
+#!/bin/bash
+
+#SBATCH -t 1:00:00
+#SBATCH -J erf_${CASE}
+#SBATCH -N ${arg[2]}
+#SBATCH -n ${arg[3]}
+#SBATCH -A accatm
+#SBATCH --export=ALL
+
+export OMP_NUM_THREADS=1
+srun -n ${arg[3]} $EXEC $INP 2>&1 > out.${LCHOST}.log
+EOM
+
+}
+
+if [[ "x$CASE" == "x" ]]; then
+    echo "CASE not specified; running default..."
+    CASE=BF02_moist_bubble_SDM_unimodal_NaCl
+fi
+echo "CASE is $CASE"
+
+NPROC=108
+NNODE=1
+export OMP_NUM_THREADS=1
+
+INP_FILE=$rootdir/inputs/inputs_${CASE}
+outfile=out.${LCHOST}.log
+
+ERF_EXEC_PATH=${ERF_BUILD}/Exec/MoistRegTests/Bubble
+EXEC=$(ls ${ERF_EXEC_PATH}/erf_*)
+echo "Executable file is ${EXEC}."
+
+jobscript="erf.job"
+
+dirname=".job_${CASE}.${LCHOST}.$(printf "nproc%05d" $NPROC)"
+if [ -d "$dirname" ]; then
+    echo "  deleting existing directory $dirname"
+    rm -rf $dirname
+fi
+echo "  creating directory $dirname"
+mkdir $dirname
+
+cd $dirname
+echo "  creating shortcut to input file $INP_FILE"
+ln -sf $INP_FILE .
+INP=$(ls inputs_${CASE})
+echo "  writing jobscript $jobscript"
+write_job $# $jobscript $NNODE $NPROC
+echo "  submitting ERF job with input file $INP"
+sbatch  $jobscript
+cd $rootdir
+

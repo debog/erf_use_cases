@@ -7,4 +7,6 @@ mean
 grid
 super_droplets_moisture*.txt
 visitlog.py
+.job*
+.run*
 
