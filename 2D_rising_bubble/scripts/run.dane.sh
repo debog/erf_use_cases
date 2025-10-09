@@ -33,5 +33,5 @@ echo "  creating shortcut for input file"
 ln -sf $INP_FILE .
 INP=$(ls inputs_${CASE})
 echo "  running ERF with input file $INP"
-srun -n $NPROC $EXEC $INP 2>&1 |tee $outfile
+srun -n $NPROC -p pdebug $EXEC $INP 2>&1 |tee $outfile
 cd $rootdir
