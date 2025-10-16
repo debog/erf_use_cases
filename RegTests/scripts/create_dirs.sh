@@ -51,6 +51,7 @@ for i in plt*; do
     echo "  comparing \$i"
     $runcmd \$AMREX_FCOMPARE \$i ../$rundir_copy/\$i
 done
+cd ..
 
 echo "amrex_pcompare is \$AMREX_PCOMPARE"
 cd $rundir
@@ -58,6 +59,7 @@ for i in plt*; do
     echo "  comparing \$i"
     $runcmd \$AMREX_PCOMPARE \$i ../$rundir_copy/\$i super_droplets_moisture
 done
+cd ..
 EOM
 }
 
