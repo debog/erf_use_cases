@@ -2,6 +2,17 @@
 
 clear
 rootdir=$PWD
+runscript="run.sh"
+
+write_run () {
+# argument 1: filename
+arg=("$@")
+/bin/cat <<EOM >${arg[1]}
+#!/bin/bash
+rm -rf plt* *core Backtrace* *.txt $outfile
+$runcmd $EXEC $INP 2>&1 |tee $outfile
+EOM
+}
 
 if [[ "x$CASE" == "x" ]]; then
     echo "CASE not specified; running default..."
@@ -14,7 +25,7 @@ runcmd=""
 if [[ "x$LCHOST" == "xdane" ]]; then
     ntasks=108
     nnodes=$(( (ntasks+56)/112 ))
-    runcmd="srun -n $ntasks -N $nnodes -p pdebug"
+    runcmd="srun -n $ntasks -N $nnodes --exclusive -p pdebug"
 elif [[ "x$LCHOST" == "xmatrix" ]]; then
     ntasks=4
     nnodes=$(( (ntasks+2)/4 ))
@@ -47,6 +58,8 @@ cd $dirname
 echo "  creating shortcut for input file"
 ln -sf $INP_FILE .
 INP=$(ls inputs_${CASE})
+echo "  writing $runscript"
+write_run $# $runscript
 echo "  running ERF with input file $INP"
 $runcmd $EXEC $INP 2>&1 |tee $outfile
 cd $rootdir
