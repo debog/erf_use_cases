@@ -62,7 +62,7 @@ erf.alpha_C          = 0.0
 
 #sdm parameters
 super_droplets_moisture.initial_distribution_type = "uniform"
-super_droplets_moisture.diagnostics_interval = -1
+super_droplets_moisture.diagnostics_interval = 100
 super_droplets_moisture.coalescence_kernel = "Halls"
 super_droplets_moisture.multiplicity_type = "constant"
 super_droplets_moisture.recycle_particles = false
