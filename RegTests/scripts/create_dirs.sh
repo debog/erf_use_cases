@@ -73,6 +73,7 @@ declare -a tests=("SDM_Box3D_Cond" \
                   "SDM_Box3D_VTerm" \
                   "SDM_Bubble2D_Adv" \
                   "SDM_Bubble2D_Adv_InitSampling" \
+                  "SDM_Bubble2D_Adv_wInjection" \
                   "SDM_Congestus3D" \
                   "SDM_MultiSpecies_Bubble2D" \
                   "SDM_RICO3D" \
