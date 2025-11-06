@@ -9,7 +9,7 @@ write_run () {
 arg=("$@")
 /bin/cat <<EOM >${arg[1]}
 #!/bin/bash
-rm -rf plt* *core Backtrace* *.txt $outfile
+rm -rf plt* deac_SD* *core Backtrace* *.txt $outfile
 $runcmd $EXEC $INP 2>&1 |tee $outfile
 EOM
 }
