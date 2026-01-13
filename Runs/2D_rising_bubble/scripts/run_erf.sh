@@ -1,0 +1,433 @@
+#!/bin/bash
+#
+# Unified ERF launcher script
+# Supports multiple HPC platforms and local desktop execution
+#
+# Usage:
+#   ./run_erf.sh [OPTIONS]
+#
+# Options:
+#   --case=NAME       Input case name (default: BF02_moist_bubble_SDM_unimodal_NaCl)
+#   --mode=MODE       Execution mode: interactive (default) or batch
+#   --ntasks=N        Override number of MPI tasks
+#   --nnodes=N        Override number of nodes
+#   --queue=NAME      Override queue/partition name
+#   --walltime=TIME   Override walltime (e.g., 1:00:00 or 1h)
+#   --dry-run         Show what would be executed without running
+#   --list-cases      List available input cases
+#   --list-platforms  List supported platforms
+#   --help            Show this help message
+#
+# Environment:
+#   LCHOST            Platform identifier (auto-detected, or 'desktop' if unset)
+#   ERF_BUILD         Path to ERF build directory (required)
+#   CASE              Alternative way to specify case name
+#
+
+set -e
+
+# =============================================================================
+# Configuration
+# =============================================================================
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+CONFIG_FILE="$SCRIPT_DIR/platforms.conf"
+INPUTS_DIR="$ROOT_DIR/inputs"
+DEFAULT_CASE="BF02_moist_bubble_SDM_unimodal_NaCl"
+
+# =============================================================================
+# Color output (disabled if not a terminal)
+# =============================================================================
+if [[ -t 1 ]]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[0;33m'
+    BLUE='\033[0;34m'
+    NC='\033[0m' # No Color
+else
+    RED='' GREEN='' YELLOW='' BLUE='' NC=''
+fi
+
+# =============================================================================
+# Helper functions
+# =============================================================================
+error() { echo -e "${RED}ERROR:${NC} $*" >&2; exit 1; }
+warn()  { echo -e "${YELLOW}WARNING:${NC} $*" >&2; }
+info()  { echo -e "${GREEN}==>${NC} $*"; }
+debug() { [[ -n "$VERBOSE" ]] && echo -e "${BLUE}DEBUG:${NC} $*" >&2 || true; }
+
+usage() {
+    sed -n '/^# Usage:/,/^[^#]/p' "$0" | grep '^#' | sed 's/^# \?//'
+    exit 0
+}
+
+# Parse configuration file for a given platform
+# Usage: get_config PLATFORM KEY [DEFAULT]
+get_config() {
+    local platform="$1" key="$2" default="${3:-}"
+    local in_section=false value=""
+
+    while IFS= read -r line; do
+        # Skip comments and empty lines
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "${line// }" ]] && continue
+
+        # Check for section header
+        if [[ "$line" =~ ^\[([a-zA-Z0-9_-]+)\] ]]; then
+            if [[ "${BASH_REMATCH[1]}" == "$platform" ]]; then
+                in_section=true
+            else
+                in_section=false
+            fi
+            continue
+        fi
+
+        # Parse key=value if in correct section
+        if $in_section && [[ "$line" =~ ^[[:space:]]*([a-zA-Z0-9_]+)[[:space:]]*=[[:space:]]*(.*) ]]; then
+            if [[ "${BASH_REMATCH[1]}" == "$key" ]]; then
+                value="${BASH_REMATCH[2]}"
+                # Trim trailing whitespace and comments
+                value="${value%%#*}"
+                value="${value%"${value##*[![:space:]]}"}"
+                echo "$value"
+                return 0
+            fi
+        fi
+    done < "$CONFIG_FILE"
+
+    echo "$default"
+}
+
+# Check if platform exists in config
+platform_exists() {
+    local platform="$1"
+    grep -q "^\[$platform\]" "$CONFIG_FILE" 2>/dev/null
+}
+
+# List available platforms
+list_platforms() {
+    echo "Available platforms:"
+    grep '^\[' "$CONFIG_FILE" | tr -d '[]' | while read -r p; do
+        local scheduler=$(get_config "$p" "scheduler")
+        local gpu=$(get_config "$p" "gpu_support" "false")
+        printf "  %-12s scheduler=%-6s gpu=%s\n" "$p" "$scheduler" "$gpu"
+    done
+}
+
+# List available input cases
+list_cases() {
+    echo "Available cases in $INPUTS_DIR:"
+    for f in "$INPUTS_DIR"/inputs_*; do
+        [[ -f "$f" ]] || continue
+        local name=$(basename "$f" | sed 's/^inputs_//')
+        echo "  $name"
+    done
+}
+
+# Validate environment and inputs
+validate() {
+    # Check ERF_BUILD
+    if [[ -z "$ERF_BUILD" ]]; then
+        error "ERF_BUILD environment variable is not set.
+       Please set it to your ERF build directory, e.g.:
+       export ERF_BUILD=/path/to/ERF/Build"
+    fi
+
+    if [[ ! -d "$ERF_BUILD" ]]; then
+        error "ERF_BUILD directory does not exist: $ERF_BUILD"
+    fi
+
+    # Find ERF executable
+    ERF_EXEC_PATH="$ERF_BUILD/Exec/MoistRegTests/Bubble"
+    if [[ ! -d "$ERF_EXEC_PATH" ]]; then
+        error "ERF executable directory not found: $ERF_EXEC_PATH"
+    fi
+
+    EXEC=$(ls "$ERF_EXEC_PATH"/erf_* 2>/dev/null | head -1) || true
+    if [[ -z "$EXEC" || ! -x "$EXEC" ]]; then
+        error "No ERF executable found in $ERF_EXEC_PATH"
+    fi
+
+    # Check input file
+    INPUT_FILE="$INPUTS_DIR/inputs_${CASE}"
+    if [[ ! -f "$INPUT_FILE" ]]; then
+        error "Input file not found: $INPUT_FILE
+       Use --list-cases to see available cases."
+    fi
+
+    # Check config file
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        error "Platform configuration file not found: $CONFIG_FILE"
+    fi
+
+    # Validate platform
+    if ! platform_exists "$PLATFORM"; then
+        error "Unknown platform: $PLATFORM
+       Use --list-platforms to see available platforms."
+    fi
+}
+
+# =============================================================================
+# Job generation functions
+# =============================================================================
+
+generate_slurm_batch() {
+    local jobfile="$1"
+    cat > "$jobfile" << EOF
+#!/bin/bash
+
+#SBATCH -J erf_${CASE}
+#SBATCH -N ${NNODES}
+#SBATCH -n ${NTASKS}
+#SBATCH -t ${WALLTIME}
+#SBATCH --exclusive
+#SBATCH --export=ALL
+EOF
+
+    [[ -n "$ACCOUNT" ]] && echo "#SBATCH -A ${ACCOUNT}" >> "$jobfile"
+    [[ -n "$QUEUE" ]] && echo "#SBATCH -p ${QUEUE}" >> "$jobfile"
+
+    if [[ "$GPU_SUPPORT" == "true" ]]; then
+        echo "#SBATCH --gpus-per-task=${GPUS_PER_TASK}" >> "$jobfile"
+    fi
+
+    cat >> "$jobfile" << EOF
+
+export OMP_NUM_THREADS=1
+
+srun -n ${NTASKS} $EXEC $INP 2>&1 | tee out.${PLATFORM}.log
+EOF
+}
+
+generate_flux_batch() {
+    local jobfile="$1"
+    cat > "$jobfile" << EOF
+#!/bin/bash
+
+#flux: --job-name=erf_${CASE}
+#flux: --output={{name}}-{{id}}.out
+#flux: --nodes=${NNODES}
+#flux: --time=${WALLTIME}
+#flux: --exclusive
+EOF
+
+    [[ -n "$ACCOUNT" ]] && echo "#flux: --bank=${ACCOUNT}" >> "$jobfile"
+    [[ -n "$QUEUE" ]] && echo "#flux: --queue=${QUEUE}" >> "$jobfile"
+
+    # Add environment variables for GPU support
+    local env_vars=$(get_config "$PLATFORM" "env_vars")
+    if [[ -n "$env_vars" ]]; then
+        for var in $env_vars; do
+            echo "export $var" >> "$jobfile"
+        done
+    fi
+
+    cat >> "$jobfile" << EOF
+
+export OMP_NUM_THREADS=1
+
+flux run --exclusive --nodes=${NNODES} --ntasks ${NTASKS} $EXEC $INP 2>&1 | tee out.${PLATFORM}.log
+EOF
+}
+
+# =============================================================================
+# Execution functions
+# =============================================================================
+
+run_interactive() {
+    local scheduler=$(get_config "$PLATFORM" "scheduler")
+    local runcmd=""
+
+    case "$scheduler" in
+        slurm)
+            local debug_queue=$(get_config "$PLATFORM" "debug_queue" "pdebug")
+            runcmd="srun -n $NTASKS -N $NNODES -p $debug_queue --exclusive"
+            if [[ "$GPU_SUPPORT" == "true" ]]; then
+                runcmd="$runcmd --gpus-per-task=${GPUS_PER_TASK}"
+            fi
+            ;;
+        flux)
+            local debug_queue=$(get_config "$PLATFORM" "debug_queue" "pdebug")
+            runcmd="flux run --exclusive --nodes=$NNODES --ntasks $NTASKS -q=$debug_queue"
+            # Set environment for GPU
+            local env_vars=$(get_config "$PLATFORM" "env_vars")
+            for var in $env_vars; do
+                export "${var?}"
+            done
+            ;;
+        direct)
+            local mpi_launcher=$(get_config "$PLATFORM" "mpi_launcher" "mpirun")
+            if command -v "$mpi_launcher" &>/dev/null; then
+                runcmd="$mpi_launcher -n $NTASKS"
+            else
+                warn "MPI launcher '$mpi_launcher' not found, running without MPI"
+                runcmd=""
+            fi
+            ;;
+        *)
+            error "Unknown scheduler: $scheduler"
+            ;;
+    esac
+
+    info "Running ERF interactively"
+    info "  Platform:   $PLATFORM"
+    info "  Case:       $CASE"
+    info "  Tasks:      $NTASKS"
+    info "  Nodes:      $NNODES"
+    info "  Executable: $EXEC"
+    info "  Input:      $INP"
+    echo
+
+    if [[ -n "$DRY_RUN" ]]; then
+        echo "Would execute:"
+        echo "  cd $WORKDIR"
+        echo "  $runcmd $EXEC $INP"
+        return 0
+    fi
+
+    export OMP_NUM_THREADS=1
+
+    if [[ -n "$runcmd" ]]; then
+        $runcmd $EXEC $INP 2>&1 | tee "out.${PLATFORM}.log"
+    else
+        $EXEC $INP 2>&1 | tee "out.${PLATFORM}.log"
+    fi
+}
+
+run_batch() {
+    local scheduler=$(get_config "$PLATFORM" "scheduler")
+    local jobfile="erf.job"
+
+    if [[ "$scheduler" == "direct" ]]; then
+        warn "Platform '$PLATFORM' does not support batch mode, falling back to interactive"
+        run_interactive
+        return
+    fi
+
+    info "Submitting ERF batch job"
+    info "  Platform:   $PLATFORM"
+    info "  Case:       $CASE"
+    info "  Tasks:      $NTASKS"
+    info "  Nodes:      $NNODES"
+    info "  Queue:      ${QUEUE:-default}"
+    info "  Walltime:   $WALLTIME"
+    info "  Executable: $EXEC"
+    info "  Input:      $INP"
+    echo
+
+    case "$scheduler" in
+        slurm)
+            generate_slurm_batch "$jobfile"
+            if [[ -n "$DRY_RUN" ]]; then
+                echo "Would submit job script:"
+                cat "$jobfile"
+                return 0
+            fi
+            sbatch "$jobfile"
+            ;;
+        flux)
+            generate_flux_batch "$jobfile"
+            if [[ -n "$DRY_RUN" ]]; then
+                echo "Would submit job script:"
+                cat "$jobfile"
+                return 0
+            fi
+            flux batch "$jobfile"
+            ;;
+        *)
+            error "Unknown scheduler for batch mode: $scheduler"
+            ;;
+    esac
+
+    info "Job submitted from directory: $WORKDIR"
+}
+
+# =============================================================================
+# Main
+# =============================================================================
+
+# Parse command line arguments
+CASE="${CASE:-}"
+MODE="interactive"
+OVERRIDE_NTASKS=""
+OVERRIDE_NNODES=""
+OVERRIDE_QUEUE=""
+OVERRIDE_WALLTIME=""
+DRY_RUN=""
+VERBOSE=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --case=*)       CASE="${1#*=}" ;;
+        --mode=*)       MODE="${1#*=}" ;;
+        --ntasks=*)     OVERRIDE_NTASKS="${1#*=}" ;;
+        --nnodes=*)     OVERRIDE_NNODES="${1#*=}" ;;
+        --queue=*)      OVERRIDE_QUEUE="${1#*=}" ;;
+        --walltime=*)   OVERRIDE_WALLTIME="${1#*=}" ;;
+        --dry-run)      DRY_RUN=1 ;;
+        --verbose|-v)   VERBOSE=1 ;;
+        --list-cases)   list_cases; exit 0 ;;
+        --list-platforms) list_platforms; exit 0 ;;
+        --help|-h)      usage ;;
+        *)              error "Unknown option: $1" ;;
+    esac
+    shift
+done
+
+# Set defaults
+CASE="${CASE:-$DEFAULT_CASE}"
+
+# Auto-detect platform from LCHOST, default to 'desktop'
+if [[ -z "$LCHOST" ]]; then
+    PLATFORM="desktop"
+    info "LCHOST not set, assuming desktop environment"
+else
+    PLATFORM="$LCHOST"
+fi
+
+# Validate inputs and environment
+validate
+
+# Load platform configuration
+SCHEDULER=$(get_config "$PLATFORM" "scheduler")
+NTASKS="${OVERRIDE_NTASKS:-$(get_config "$PLATFORM" "ntasks" "4")}"
+NNODES="${OVERRIDE_NNODES:-$(get_config "$PLATFORM" "nnodes" "1")}"
+QUEUE="${OVERRIDE_QUEUE:-$(get_config "$PLATFORM" "queue")}"
+WALLTIME="${OVERRIDE_WALLTIME:-$(get_config "$PLATFORM" "walltime" "1:00:00")}"
+GPU_SUPPORT=$(get_config "$PLATFORM" "gpu_support" "false")
+GPUS_PER_TASK=$(get_config "$PLATFORM" "gpus_per_task" "1")
+ACCOUNT=$(get_config "$PLATFORM" "account")
+
+debug "Platform config loaded:"
+debug "  scheduler=$SCHEDULER ntasks=$NTASKS nnodes=$NNODES"
+debug "  queue=$QUEUE walltime=$WALLTIME gpu=$GPU_SUPPORT"
+
+# Create working directory
+WORKDIR="$ROOT_DIR/.run_${CASE}.${PLATFORM}.$(printf "nproc%05d" "$NTASKS")"
+if [[ -d "$WORKDIR" ]]; then
+    info "Removing existing directory: $WORKDIR"
+    rm -rf "$WORKDIR"
+fi
+info "Creating working directory: $WORKDIR"
+mkdir -p "$WORKDIR"
+
+cd "$WORKDIR"
+
+# Create symlink to input file
+ln -sf "$INPUT_FILE" .
+INP="inputs_${CASE}"
+
+# Execute based on mode
+case "$MODE" in
+    interactive|i)
+        run_interactive
+        ;;
+    batch|b)
+        run_batch
+        ;;
+    *)
+        error "Unknown mode: $MODE (use 'interactive' or 'batch')"
+        ;;
+esac
+
+info "Done."
