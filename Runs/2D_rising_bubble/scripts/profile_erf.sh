@@ -13,6 +13,7 @@
 #   -N, --nnodes=N        Override number of nodes
 #   -q, --queue=NAME      Override queue/partition name
 #   -t, --walltime=TIME   Override walltime (e.g., 1:00:00 or 1h)
+#   -s, --max-steps=N     Number of timesteps to run (default: 10)
 #   -P, --profiler=NAME   Profiler to use (platform-specific, see --list-profilers)
 #   -o, --output=NAME     Profile output name (default: profile)
 #   -r, --report          Generate report after profiling (interactive mode only)
@@ -284,7 +285,7 @@ echo "Profiler: $PROFILER"
 echo "Output: $PROFILE_OUTPUT"
 
 # Run with profiler
-srun -n ${NTASKS} $prof_cmd $EXEC $INP 2>&1 | tee out.profile.${PLATFORM}.log
+srun -n ${NTASKS} $prof_cmd $EXEC $INP max_step=$MAX_STEPS 2>&1 | tee out.profile.${PLATFORM}.log
 
 echo "Profiling completed at \$(date)"
 echo "Profile output: \$(ls -la ${PROFILE_OUTPUT}* 2>/dev/null || echo 'Check working directory')"
@@ -324,7 +325,7 @@ echo "Profiler: $PROFILER"
 echo "Output: $PROFILE_OUTPUT"
 
 # Run with profiler
-flux run --exclusive --nodes=${NNODES} --ntasks ${NTASKS} $prof_cmd $EXEC $INP 2>&1 | tee out.profile.${PLATFORM}.log
+flux run --exclusive --nodes=${NNODES} --ntasks ${NTASKS} $prof_cmd $EXEC $INP max_step=$MAX_STEPS 2>&1 | tee out.profile.${PLATFORM}.log
 
 echo "Profiling completed at \$(date)"
 echo "Profile output: \$(ls -la ${PROFILE_OUTPUT}* 2>/dev/null || echo 'Check working directory')"
@@ -381,6 +382,7 @@ run_profile_interactive() {
     info "  Executable: $EXEC"
     info "  Input:      $INP"
     prof "  Profiler:   $PROFILER"
+    prof "  Max steps:  $MAX_STEPS"
     prof "  Command:    $prof_cmd"
     prof "  Output:     $PROFILE_OUTPUT"
     echo
@@ -389,9 +391,9 @@ run_profile_interactive() {
         echo "Would execute:"
         echo "  cd $WORKDIR"
         if [[ -n "$runcmd" ]]; then
-            echo "  $runcmd $prof_cmd $EXEC $INP"
+            echo "  $runcmd $prof_cmd $EXEC $INP max_step=$MAX_STEPS"
         else
-            echo "  $prof_cmd $EXEC $INP"
+            echo "  $prof_cmd $EXEC $INP max_step=$MAX_STEPS"
         fi
         return 0
     fi
@@ -403,9 +405,9 @@ run_profile_interactive() {
     local start_time=$(date +%s)
 
     if [[ -n "$runcmd" ]]; then
-        $runcmd $prof_cmd $EXEC $INP 2>&1 | tee "out.profile.${PLATFORM}.log"
+        $runcmd $prof_cmd $EXEC $INP max_step=$MAX_STEPS 2>&1 | tee "out.profile.${PLATFORM}.log"
     else
-        $prof_cmd $EXEC $INP 2>&1 | tee "out.profile.${PLATFORM}.log"
+        $prof_cmd $EXEC $INP max_step=$MAX_STEPS 2>&1 | tee "out.profile.${PLATFORM}.log"
     fi
 
     local end_time=$(date +%s)
@@ -455,6 +457,7 @@ run_profile_batch() {
     info "  Executable: $EXEC"
     info "  Input:      $INP"
     prof "  Profiler:   $PROFILER"
+    prof "  Max steps:  $MAX_STEPS"
     prof "  Output:     $PROFILE_OUTPUT"
     echo
 
@@ -499,6 +502,7 @@ OVERRIDE_QUEUE=""
 OVERRIDE_WALLTIME=""
 PROFILER=""
 PROFILE_OUTPUT="profile"
+MAX_STEPS="10"
 GENERATE_REPORT=""
 DRY_RUN=""
 VERBOSE=""
@@ -517,6 +521,8 @@ while [[ $# -gt 0 ]]; do
             [[ "$1" == -q ]] && { shift; OVERRIDE_QUEUE="$1"; } || OVERRIDE_QUEUE="${1#*=}" ;;
         -t|--walltime=*)
             [[ "$1" == -t ]] && { shift; OVERRIDE_WALLTIME="$1"; } || OVERRIDE_WALLTIME="${1#*=}" ;;
+        -s|--max-steps=*)
+            [[ "$1" == -s ]] && { shift; MAX_STEPS="$1"; } || MAX_STEPS="${1#*=}" ;;
         -P|--profiler=*)
             [[ "$1" == -P ]] && { shift; PROFILER="$1"; } || PROFILER="${1#*=}" ;;
         -o|--output=*)

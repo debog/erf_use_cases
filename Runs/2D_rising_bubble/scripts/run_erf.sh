@@ -13,6 +13,7 @@
 #   -N, --nnodes=N        Override number of nodes
 #   -q, --queue=NAME      Override queue/partition name
 #   -t, --walltime=TIME   Override walltime (e.g., 1:00:00 or 1h)
+#   -s, --max-steps=N     Override number of timesteps (uses input file default if unset)
 #   -d, --dry-run         Show what would be executed without running
 #   -l, --list-cases      List available input cases
 #   -p, --list-platforms  List supported platforms
@@ -196,7 +197,7 @@ EOF
 
 export OMP_NUM_THREADS=1
 
-srun -n ${NTASKS} $EXEC $INP 2>&1 | tee out.${PLATFORM}.log
+srun -n ${NTASKS} $EXEC $INP $ERF_EXTRA_ARGS 2>&1 | tee out.${PLATFORM}.log
 EOF
 }
 
@@ -227,7 +228,7 @@ EOF
 
 export OMP_NUM_THREADS=1
 
-flux run --exclusive --nodes=${NNODES} --ntasks ${NTASKS} $EXEC $INP 2>&1 | tee out.${PLATFORM}.log
+flux run --exclusive --nodes=${NNODES} --ntasks ${NTASKS} $EXEC $INP $ERF_EXTRA_ARGS 2>&1 | tee out.${PLATFORM}.log
 EOF
 }
 
@@ -277,21 +278,22 @@ run_interactive() {
     info "  Nodes:      $NNODES"
     info "  Executable: $EXEC"
     info "  Input:      $INP"
+    [[ -n "$MAX_STEPS" ]] && info "  Max steps:  $MAX_STEPS"
     echo
 
     if [[ -n "$DRY_RUN" ]]; then
         echo "Would execute:"
         echo "  cd $WORKDIR"
-        echo "  $runcmd $EXEC $INP"
+        echo "  $runcmd $EXEC $INP $ERF_EXTRA_ARGS"
         return 0
     fi
 
     export OMP_NUM_THREADS=1
 
     if [[ -n "$runcmd" ]]; then
-        $runcmd $EXEC $INP 2>&1 | tee "out.${PLATFORM}.log"
+        $runcmd $EXEC $INP $ERF_EXTRA_ARGS 2>&1 | tee "out.${PLATFORM}.log"
     else
-        $EXEC $INP 2>&1 | tee "out.${PLATFORM}.log"
+        $EXEC $INP $ERF_EXTRA_ARGS 2>&1 | tee "out.${PLATFORM}.log"
     fi
 }
 
@@ -314,6 +316,7 @@ run_batch() {
     info "  Walltime:   $WALLTIME"
     info "  Executable: $EXEC"
     info "  Input:      $INP"
+    [[ -n "$MAX_STEPS" ]] && info "  Max steps:  $MAX_STEPS"
     echo
 
     case "$scheduler" in
@@ -354,6 +357,7 @@ OVERRIDE_NTASKS=""
 OVERRIDE_NNODES=""
 OVERRIDE_QUEUE=""
 OVERRIDE_WALLTIME=""
+MAX_STEPS=""
 DRY_RUN=""
 VERBOSE=""
 
@@ -371,6 +375,8 @@ while [[ $# -gt 0 ]]; do
             [[ "$1" == -q ]] && { shift; OVERRIDE_QUEUE="$1"; } || OVERRIDE_QUEUE="${1#*=}" ;;
         -t|--walltime=*)
             [[ "$1" == -t ]] && { shift; OVERRIDE_WALLTIME="$1"; } || OVERRIDE_WALLTIME="${1#*=}" ;;
+        -s|--max-steps=*)
+            [[ "$1" == -s ]] && { shift; MAX_STEPS="$1"; } || MAX_STEPS="${1#*=}" ;;
         -d|--dry-run)   DRY_RUN=1 ;;
         -v|--verbose)   VERBOSE=1 ;;
         -l|--list-cases) list_cases; exit 0 ;;
@@ -423,6 +429,10 @@ cd "$WORKDIR"
 # Create symlink to input file
 ln -sf "$INPUT_FILE" .
 INP="inputs_${CASE}"
+
+# Build extra arguments for ERF
+ERF_EXTRA_ARGS=""
+[[ -n "$MAX_STEPS" ]] && ERF_EXTRA_ARGS="max_step=$MAX_STEPS"
 
 # Execute based on mode
 case "$MODE" in

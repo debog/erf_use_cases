@@ -29,6 +29,7 @@ export ERF_BUILD=/path/to/ERF/Build
 | `-N` | `--nnodes=N` | Override node count |
 | `-q` | `--queue=NAME` | Override queue/partition |
 | `-t` | `--walltime=TIME` | Override walltime |
+| `-s` | `--max-steps=N` | Override number of timesteps |
 | `-d` | `--dry-run` | Preview without executing |
 | `-l` | `--list-cases` | Show available cases |
 | `-p` | `--list-platforms` | Show supported platforms |
@@ -74,7 +75,8 @@ Run `./scripts/run_erf.sh -l` for the complete list.
 
 ## Profiling
 
-Use `profile_erf.sh` to run with platform-appropriate profiling tools:
+Use `profile_erf.sh` to run with platform-appropriate profiling tools.
+By default, profiling runs use `max_step=10` for quick profiling.
 
 ```bash
 ./scripts/profile_erf.sh -c BF02_moist_bubble_Kessler
@@ -82,6 +84,7 @@ Use `profile_erf.sh` to run with platform-appropriate profiling tools:
 
 | Short | Long | Description |
 |-------|------|-------------|
+| `-s` | `--max-steps=N` | Number of timesteps (default: 10) |
 | `-P` | `--profiler=NAME` | Profiler to use (see `--list-profilers`) |
 | `-o` | `--output=NAME` | Profile output name (default: `profile`) |
 | `-r` | `--report` | Generate report after profiling |
@@ -98,8 +101,11 @@ Use `profile_erf.sh` to run with platform-appropriate profiling tools:
 ### Profiling Examples
 
 ```bash
-# Profile with default profiler
+# Profile with default profiler (10 timesteps)
 ./scripts/profile_erf.sh -c BF02_moist_bubble_Kessler
+
+# Profile with more timesteps
+./scripts/profile_erf.sh -s 100 -c BF02_moist_bubble_Kessler
 
 # Use alternative profiler (e.g., ncu on matrix)
 ./scripts/profile_erf.sh -P ncu -c BF02_moist_bubble_Kessler
