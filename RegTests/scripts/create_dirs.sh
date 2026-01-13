@@ -24,6 +24,7 @@ arg=("$@")
 /bin/cat <<EOM >${arg[1]}
 #!/bin/bash
 
+rm -rf plt* *.txt Backtrace* *core*
 $runcmd $EXEC ${arg[2]}.i 2>&1 |tee $outfile
 EOM
 }
