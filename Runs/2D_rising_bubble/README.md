@@ -72,6 +72,45 @@ The script auto-detects the platform from `$LCHOST`:
 
 Run `./scripts/run_erf.sh -l` for the complete list.
 
+## Profiling
+
+Use `profile_erf.sh` to run with platform-appropriate profiling tools:
+
+```bash
+./scripts/profile_erf.sh -c BF02_moist_bubble_Kessler
+```
+
+| Short | Long | Description |
+|-------|------|-------------|
+| `-P` | `--profiler=NAME` | Profiler to use (see `--list-profilers`) |
+| `-o` | `--output=NAME` | Profile output name (default: `profile`) |
+| `-r` | `--report` | Generate report after profiling |
+
+### Platform Profilers
+
+| Platform | Default | Alternative | Description |
+|----------|---------|-------------|-------------|
+| desktop | `perf` | - | Linux perf tools (CPU sampling) |
+| dane | `perf` | - | Linux perf tools (CPU sampling) |
+| matrix | `nsys` | `ncu` | NVIDIA Nsight Systems / Compute |
+| tuolumne | `rocprof` | `omniperf` | AMD ROCm profiler / Omniperf |
+
+### Profiling Examples
+
+```bash
+# Profile with default profiler
+./scripts/profile_erf.sh -c BF02_moist_bubble_Kessler
+
+# Use alternative profiler (e.g., ncu on matrix)
+./scripts/profile_erf.sh -P ncu -c BF02_moist_bubble_Kessler
+
+# Profile and generate report
+./scripts/profile_erf.sh -r -c BF02_moist_bubble_Kessler
+
+# Batch profiling job
+./scripts/profile_erf.sh -m batch -c BF02_moist_bubble_SDM_unimodal_NaCl
+```
+
 ## Creating New Input Variants
 
 ```bash
