@@ -570,10 +570,39 @@ fi
 # Validate inputs and environment
 validate
 
-# Check if profiler is available
+# Validate profiler is configured for this platform
+validate_profiler() {
+    local profiler="$1"
+    local default_profiler=$(get_config "$PLATFORM" "profiler")
+    local alt_profiler=$(get_config "$PLATFORM" "profiler_alt")
+
+    if [[ -z "$profiler" || "$profiler" == "$default_profiler" ]]; then
+        return 0
+    elif [[ -n "$alt_profiler" && "$profiler" == "$alt_profiler" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+if ! validate_profiler "$PROFILER"; then
+    error "Unknown profiler '$PROFILER' for platform '$PLATFORM'.
+       Use --list-profilers to see available options."
+fi
+
+# Check if profiler is available in PATH
 if ! command -v "$PROFILER" &>/dev/null; then
-    warn "Profiler '$PROFILER' not found in PATH"
-    warn "The job may fail if the profiler is not available on compute nodes"
+    if [[ "$MODE" == "interactive" || "$MODE" == "i" ]]; then
+        error "Profiler '$PROFILER' not found in PATH.
+       Please ensure the profiler is installed and available.
+       On HPC systems, you may need to load a module first:
+         module load $PROFILER
+       Or use --list-profilers to see available options."
+    else
+        warn "Profiler '$PROFILER' not found in PATH"
+        warn "Assuming it will be available on compute nodes (batch mode)"
+        warn "If the job fails, ensure the profiler module is loaded in the job script"
+    fi
 fi
 
 # Load platform configuration
