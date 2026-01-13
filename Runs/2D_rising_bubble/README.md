@@ -18,7 +18,7 @@ export ERF_BUILD=/path/to/ERF/Build
 ## Usage
 
 ```bash
-./run_erf.sh [OPTIONS]
+./scripts/run_erf.sh [OPTIONS]
 ```
 
 | Option | Description |
