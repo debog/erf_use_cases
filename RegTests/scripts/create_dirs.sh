@@ -1,5 +1,17 @@
 #!/bin/bash
 
+set -e
+
+# Check required environment variables
+if [[ -z "$ERF_HOME" ]]; then
+    echo "Error: ERF_HOME is not set" >&2
+    exit 1
+fi
+if [[ -z "$ERF_BUILD" ]]; then
+    echo "Error: ERF_BUILD is not set" >&2
+    exit 1
+fi
+
 if [[ -z $LCHOST ]]; then
   LCHOST=$HOSTNAME
 fi
@@ -8,6 +20,26 @@ clear
 rootdir=$PWD
 ntasks=4
 outfile=out.$LCHOST.log
+
+# Associative array for executable mapping (pattern -> relative path)
+declare -A exec_map=(
+    ["RICO"]="Exec/DevTests/RICO"
+    ["MultiSpecies"]="Exec/DevTests/MultiSpeciesBubble"
+    ["Congestus"]="Exec/DevTests/TemperatureSourceSpatial"
+)
+DEFAULT_EXEC_PATH="Exec/MoistRegTests/Bubble"
+
+# Function to get executable path for a given SDM test
+get_exec_path() {
+    local sdm=$1
+    for key in "${!exec_map[@]}"; do
+        if [[ "$sdm" == *"$key"* ]]; then
+            echo "${ERF_BUILD}/${exec_map[$key]}"
+            return
+        fi
+    done
+    echo "${ERF_BUILD}/${DEFAULT_EXEC_PATH}"
+}
 
 runcmd=""
 if [[ "x$LCHOST" == "xdane" ]]; then
@@ -75,41 +107,36 @@ echo "ERF directory is $ERF_HOME."
 echo ""
 testdir="$ERF_HOME/Tests/test_files"
 
-declare -a tests=("SDM_Box3D_Cond" \
-                  "SDM_Box3D_Recycling" \
-                  "SDM_Box3D_VTerm" \
-                  "SDM_Bubble2D_Adv" \
-                  "SDM_Bubble2D_Adv_InitSampling" \
-                  "SDM_Bubble2D_Adv_TfzINAS" \
-                  "SDM_Bubble2D_Adv_wInjection" \
-                  "SDM_Congestus3D" \
-                  "SDM_MultiSpecies_Bubble2D" \
-                  "SDM_RICO3D" \
-                  "SDM_RICO3D_InitSampling")
+# Dynamically discover SDM tests from ERF test_files directory
+declare -a tests=()
+for dir in "$testdir"/SDM_*/; do
+    if [ -d "$dir" ]; then
+        tests+=("$(basename "$dir")")
+    fi
+done
+
+echo "Found ${#tests[@]} SDM tests: ${tests[*]}"
+echo ""
 
 testdir_prefix=".test_$LCHOST"
 rundir_prefix="run"
 runscript="run.sh"
-inpsoundfile="input_sounding"
 runtests="run_sims.sh"
 checktests="check_tests.sh"
 
 for sdm in ${tests[@]}; do
 
-    if [[ "$sdm" == "SDM_RICO3D"* ]]; then
-        ERF_EXEC_PATH=${ERF_BUILD}/Exec/DevTests/RICO
-    elif [[ "$sdm" == "SDM_MultiSpecies_Bubble2D"* ]]; then
-        ERF_EXEC_PATH=${ERF_BUILD}/Exec/DevTests/MultiSpeciesBubble
-    elif [[ "$sdm" == "SDM_Congestus3D"* ]]; then
-        ERF_EXEC_PATH=${ERF_BUILD}/Exec/DevTests/TemperatureSourceSpatial
-    else
-        ERF_EXEC_PATH=${ERF_BUILD}/Exec/MoistRegTests/Bubble
+    ERF_EXEC_PATH=$(get_exec_path "$sdm")
+    EXEC=$(ls ${ERF_EXEC_PATH}/erf_* 2>/dev/null || true)
+
+    # Validate executable exists
+    if [[ -z "$EXEC" || ! -x "$EXEC" ]]; then
+        echo "Warning: No executable found in ${ERF_EXEC_PATH} for $sdm; skipping..."
+        continue
     fi
-    EXEC=$(ls ${ERF_EXEC_PATH}/erf_*)
 
     inp_dir="$testdir/$sdm"
     if [ -d "$inp_dir" ]; then
-        inp_file=$inp_dir/$sdm.i
         echo "Executable file is ${EXEC}."
         echo "Creating run directories for $sdm."
         dirname="${testdir_prefix}.$sdm"
@@ -126,13 +153,12 @@ for sdm in ${tests[@]}; do
         mkdir $rundir
         echo "    entering $rundir"
         cd $rundir
-        echo "    creating symlink to $inp_file"
-        ln -sf $inp_file .
-        inpsound=$inp_dir/$inpsoundfile
-        if [ -f "$inpsound" ]; then
-            echo "    creating symlink to $inpsound"
-            ln -sf $inpsound .
-        fi
+        echo "    creating symlinks to all input files"
+        for f in "$inp_dir"/*; do
+            if [ -f "$f" ]; then
+                ln -sf "$f" .
+            fi
+        done
         echo "    writing run script $runscript"
         write_run $# $runscript $sdm
         cd ..
