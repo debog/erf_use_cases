@@ -7,16 +7,17 @@
 #   ./run_erf.sh [OPTIONS]
 #
 # Options:
-#   --case=NAME       Input case name (default: BF02_moist_bubble_SDM_unimodal_NaCl)
-#   --mode=MODE       Execution mode: interactive (default) or batch
-#   --ntasks=N        Override number of MPI tasks
-#   --nnodes=N        Override number of nodes
-#   --queue=NAME      Override queue/partition name
-#   --walltime=TIME   Override walltime (e.g., 1:00:00 or 1h)
-#   --dry-run         Show what would be executed without running
-#   --list-cases      List available input cases
-#   --list-platforms  List supported platforms
-#   --help            Show this help message
+#   -c, --case=NAME       Input case name (default: BF02_moist_bubble_SDM_unimodal_NaCl)
+#   -m, --mode=MODE       Execution mode: interactive (default) or batch
+#   -n, --ntasks=N        Override number of MPI tasks
+#   -N, --nnodes=N        Override number of nodes
+#   -q, --queue=NAME      Override queue/partition name
+#   -t, --walltime=TIME   Override walltime (e.g., 1:00:00 or 1h)
+#   -d, --dry-run         Show what would be executed without running
+#   -l, --list-cases      List available input cases
+#   -p, --list-platforms  List supported platforms
+#   -v, --verbose         Enable verbose output
+#   -h, --help            Show this help message
 #
 # Environment:
 #   LCHOST            Platform identifier (auto-detected, or 'desktop' if unset)
@@ -358,17 +359,23 @@ VERBOSE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --case=*)       CASE="${1#*=}" ;;
-        --mode=*)       MODE="${1#*=}" ;;
-        --ntasks=*)     OVERRIDE_NTASKS="${1#*=}" ;;
-        --nnodes=*)     OVERRIDE_NNODES="${1#*=}" ;;
-        --queue=*)      OVERRIDE_QUEUE="${1#*=}" ;;
-        --walltime=*)   OVERRIDE_WALLTIME="${1#*=}" ;;
-        --dry-run)      DRY_RUN=1 ;;
-        --verbose|-v)   VERBOSE=1 ;;
-        --list-cases)   list_cases; exit 0 ;;
-        --list-platforms) list_platforms; exit 0 ;;
-        --help|-h)      usage ;;
+        -c|--case=*)
+            [[ "$1" == -c ]] && { shift; CASE="$1"; } || CASE="${1#*=}" ;;
+        -m|--mode=*)
+            [[ "$1" == -m ]] && { shift; MODE="$1"; } || MODE="${1#*=}" ;;
+        -n|--ntasks=*)
+            [[ "$1" == -n ]] && { shift; OVERRIDE_NTASKS="$1"; } || OVERRIDE_NTASKS="${1#*=}" ;;
+        -N|--nnodes=*)
+            [[ "$1" == -N ]] && { shift; OVERRIDE_NNODES="$1"; } || OVERRIDE_NNODES="${1#*=}" ;;
+        -q|--queue=*)
+            [[ "$1" == -q ]] && { shift; OVERRIDE_QUEUE="$1"; } || OVERRIDE_QUEUE="${1#*=}" ;;
+        -t|--walltime=*)
+            [[ "$1" == -t ]] && { shift; OVERRIDE_WALLTIME="$1"; } || OVERRIDE_WALLTIME="${1#*=}" ;;
+        -d|--dry-run)   DRY_RUN=1 ;;
+        -v|--verbose)   VERBOSE=1 ;;
+        -l|--list-cases) list_cases; exit 0 ;;
+        -p|--list-platforms) list_platforms; exit 0 ;;
+        -h|--help)      usage ;;
         *)              error "Unknown option: $1" ;;
     esac
     shift

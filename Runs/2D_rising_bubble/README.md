@@ -21,16 +21,19 @@ export ERF_BUILD=/path/to/ERF/Build
 ./scripts/run_erf.sh [OPTIONS]
 ```
 
-| Option | Description |
-|--------|-------------|
-| `--case=NAME` | Input case name (default: `BF02_moist_bubble_SDM_unimodal_NaCl`) |
-| `--mode=MODE` | `interactive` (default) or `batch` |
-| `--ntasks=N` | Override MPI task count |
-| `--nnodes=N` | Override node count |
-| `--queue=NAME` | Override queue/partition |
-| `--dry-run` | Preview without executing |
-| `--list-cases` | Show available cases |
-| `--list-platforms` | Show supported platforms |
+| Short | Long | Description |
+|-------|------|-------------|
+| `-c` | `--case=NAME` | Input case name (default: `BF02_moist_bubble_SDM_unimodal_NaCl`) |
+| `-m` | `--mode=MODE` | `interactive` (default) or `batch` |
+| `-n` | `--ntasks=N` | Override MPI task count |
+| `-N` | `--nnodes=N` | Override node count |
+| `-q` | `--queue=NAME` | Override queue/partition |
+| `-t` | `--walltime=TIME` | Override walltime |
+| `-d` | `--dry-run` | Preview without executing |
+| `-l` | `--list-cases` | Show available cases |
+| `-p` | `--list-platforms` | Show supported platforms |
+| `-v` | `--verbose` | Enable verbose output |
+| `-h` | `--help` | Show help message |
 
 ## Platform Detection
 
@@ -47,16 +50,16 @@ The script auto-detects the platform from `$LCHOST`:
 
 ```bash
 # Interactive run on desktop
-./scripts/run_erf.sh --case=BF02_moist_bubble_Kessler
+./scripts/run_erf.sh -c BF02_moist_bubble_Kessler
 
 # Batch submission on HPC
-./scripts/run_erf.sh --case=BF02_moist_bubble_SDM_unimodal_NaCl --mode=batch
+./scripts/run_erf.sh -c BF02_moist_bubble_SDM_unimodal_NaCl -m batch
 
 # Custom resources
-./scripts/run_erf.sh --ntasks=16 --nnodes=2 --queue=pbatch --mode=batch
+./scripts/run_erf.sh -n 16 -N 2 -q pbatch -m batch
 
 # Preview commands without running
-./scripts/run_erf.sh --dry-run
+./scripts/run_erf.sh -d
 ```
 
 ## Available Cases
@@ -67,7 +70,7 @@ The script auto-detects the platform from `$LCHOST`:
 - `BF02_moist_bubble_SDM_inject_unimodal_NaCl` - SDM with particle injection
 - `BF02_moist_bubble_IceSDM_unimodal_NaCl` - Ice-phase SDM
 
-Run `./scripts/run_erf.sh --list-cases` for the complete list.
+Run `./scripts/run_erf.sh -l` for the complete list.
 
 ## Creating New Input Variants
 
