@@ -5,7 +5,11 @@ ERF simulation of the BF02 moist bubble test case with various microphysics opti
 ## Quick Start
 
 ```bash
-./scripts/run_erf.sh --case=BF02_moist_bubble_SDM_unimodal_NaCl
+# Run a case
+./scripts/run_erf.sh -c BF02_moist_bubble_SDM_unimodal_NaCl
+
+# Profile a case (10 timesteps by default)
+./scripts/profile_erf.sh -c BF02_moist_bubble_Kessler
 ```
 
 ## Requirements
