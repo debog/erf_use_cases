@@ -1,5 +1,9 @@
 #!/bin/bash
 
+if [[ -z $LCHOST ]]; then
+  LCHOST=$HOSTNAME
+fi
+
 clear
 rootdir=$PWD
 ntasks=4
@@ -12,6 +16,8 @@ elif [[ "x$LCHOST" == "xmatrix" ]]; then
     runcmd="srun -p pdebug -n $ntasks -G $ntasks -N 1"
 elif [[ "x$LCHOST" == "xtuolumne" ]]; then
     runcmd="flux run --exclusive --nodes=1 --ntasks $ntasks -q=pdebug"
+else
+    runcmd="mpirun -n $ntasks"
 fi
 
 write_run () {
@@ -73,6 +79,7 @@ declare -a tests=("SDM_Box3D_Cond" \
                   "SDM_Box3D_VTerm" \
                   "SDM_Bubble2D_Adv" \
                   "SDM_Bubble2D_Adv_InitSampling" \
+                  "SDM_Bubble2D_Adv_TfzINAS" \
                   "SDM_Bubble2D_Adv_wInjection" \
                   "SDM_Congestus3D" \
                   "SDM_MultiSpecies_Bubble2D" \
