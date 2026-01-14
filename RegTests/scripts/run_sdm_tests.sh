@@ -10,6 +10,8 @@
 #   -n, --ntasks=N        Number of MPI tasks (default: 4)
 #   -t, --test=NAME       Run only specific test(s) (can be repeated or comma-separated)
 #   -l, --list            List available SDM tests
+#   --output-on-failure   Show test output when a test fails
+#   --rerun-failed        Rerun only tests that failed in the previous run
 #   -v, --verbose         Enable verbose output
 #   -d, --dry-run         Show what would be executed without running
 #   -h, --help            Show this help message
@@ -37,6 +39,9 @@ NTASKS=4
 VERBOSE=""
 DRY_RUN=""
 SELECTED_TESTS=""
+OUTPUT_ON_FAILURE=""
+RERUN_FAILED=""
+FAILED_TESTS_FILE="$SCRIPT_DIR/.failed_tests"
 
 # =============================================================================
 # Color output (disabled if not a terminal)
@@ -385,8 +390,21 @@ run_single_test() {
 
 run_tests() {
     local tests_to_run=()
+    local failed_tests=()
 
-    if [[ -n "$SELECTED_TESTS" ]]; then
+    # Handle --rerun-failed
+    if [[ -n "$RERUN_FAILED" ]]; then
+        if [[ ! -f "$FAILED_TESTS_FILE" ]]; then
+            info "No failed tests file found. Nothing to rerun."
+            return 0
+        fi
+        mapfile -t tests_to_run < "$FAILED_TESTS_FILE"
+        if [[ ${#tests_to_run[@]} -eq 0 ]]; then
+            info "No failed tests to rerun."
+            return 0
+        fi
+        info "Rerunning ${#tests_to_run[@]} previously failed test(s)"
+    elif [[ -n "$SELECTED_TESTS" ]]; then
         # Parse comma-separated or space-separated test names
         IFS=', ' read -ra tests_to_run <<< "$SELECTED_TESTS"
     else
@@ -423,7 +441,21 @@ run_tests() {
 
         case $result in
             0) ((++passed)) ;;
-            1) ((++failed)) ;;
+            1)
+                ((++failed))
+                failed_tests+=("$test_name")
+                # Show output on failure if requested
+                if [[ -n "$OUTPUT_ON_FAILURE" ]]; then
+                    local log_file="$PWD/.test_${PLATFORM}.${test_name}/${test_name}.log"
+                    if [[ -f "$log_file" ]]; then
+                        echo ""
+                        echo -e "${CYAN}--- Output of $test_name ---${NC}"
+                        cat "$log_file"
+                        echo -e "${CYAN}--- End of $test_name output ---${NC}"
+                        echo ""
+                    fi
+                fi
+                ;;
             2) ((++skipped)) ;;
         esac
     done
@@ -441,15 +473,22 @@ run_tests() {
     echo "Time:    ${total_elapsed}s"
     echo ""
 
-    if [[ $failed -gt 0 ]]; then
+    # Save failed tests for --rerun-failed
+    if [[ ${#failed_tests[@]} -gt 0 ]]; then
+        printf '%s\n' "${failed_tests[@]}" > "$FAILED_TESTS_FILE"
         echo -e "${RED}Some tests failed. Check .test_* directories for logs.${NC}"
-        return 1
-    elif [[ $passed -eq 0 && $skipped -eq $total ]]; then
-        echo -e "${YELLOW}All tests were skipped.${NC}"
+        echo "Use --rerun-failed to rerun only the failed tests."
         return 1
     else
-        echo -e "${GREEN}All tests passed!${NC}"
-        return 0
+        # Clear failed tests file on success
+        rm -f "$FAILED_TESTS_FILE"
+        if [[ $passed -eq 0 && $skipped -eq $total ]]; then
+            echo -e "${YELLOW}All tests were skipped.${NC}"
+            return 1
+        else
+            echo -e "${GREEN}All tests passed!${NC}"
+            return 0
+        fi
     fi
 }
 
@@ -493,6 +532,14 @@ parse_args() {
                 ;;
             -d|--dry-run)
                 DRY_RUN=1
+                shift
+                ;;
+            --output-on-failure)
+                OUTPUT_ON_FAILURE=1
+                shift
+                ;;
+            --rerun-failed)
+                RERUN_FAILED=1
                 shift
                 ;;
             -h|--help)
