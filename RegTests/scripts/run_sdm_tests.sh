@@ -356,12 +356,33 @@ run_single_test() {
         local fcompare_flags="--abort_if_not_all_found --allow_diff_grids --rel_tol $rtol --abs_tol $atol"
         debug "Comparing: $MPI_FCOMP_CMD $FCOMPARE_EXE $fcompare_flags $gold_dir $pltfile"
 
-        if $MPI_FCOMP_CMD "$FCOMPARE_EXE" $fcompare_flags "$gold_dir" "$pltfile" >> "$log_file" 2>&1; then
+        local fcompare_result=0
+        if [[ -n "$VERBOSE" ]]; then
+            echo ""
+            echo -e "${CYAN}--- amrex_fcompare output for $test_name ---${NC}"
+            $MPI_FCOMP_CMD "$FCOMPARE_EXE" $fcompare_flags "$gold_dir" "$pltfile" | tee -a "$log_file" || fcompare_result=$?
+            echo -e "${CYAN}--- End of amrex_fcompare output ---${NC}"
+            echo ""
+        else
+            $MPI_FCOMP_CMD "$FCOMPARE_EXE" $fcompare_flags "$gold_dir" "$pltfile" >> "$log_file" 2>&1 || fcompare_result=$?
+        fi
+
+        if [[ $fcompare_result -eq 0 ]]; then
             # Also run pcompare for particle data if available
             local particle_check_passed=true
             if [[ -n "$PCOMPARE_EXE" && -d "$pltfile/super_droplets_moisture" ]]; then
-                if ! $MPI_FCOMP_CMD "$PCOMPARE_EXE" "$gold_dir" "$pltfile" super_droplets_moisture >> "$log_file" 2>&1; then
-                    particle_check_passed=false
+                if [[ -n "$VERBOSE" ]]; then
+                    echo ""
+                    echo -e "${CYAN}--- amrex_pcompare output for $test_name ---${NC}"
+                    if ! $MPI_FCOMP_CMD "$PCOMPARE_EXE" "$gold_dir" "$pltfile" super_droplets_moisture | tee -a "$log_file"; then
+                        particle_check_passed=false
+                    fi
+                    echo -e "${CYAN}--- End of amrex_pcompare output ---${NC}"
+                    echo ""
+                else
+                    if ! $MPI_FCOMP_CMD "$PCOMPARE_EXE" "$gold_dir" "$pltfile" super_droplets_moisture >> "$log_file" 2>&1; then
+                        particle_check_passed=false
+                    fi
                 fi
             fi
 
