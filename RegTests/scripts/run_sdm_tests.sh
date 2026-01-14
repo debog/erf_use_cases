@@ -294,7 +294,7 @@ run_single_test() {
     # Get gold file path
     local gold_dir="$GOLDFILES_DIR/$test_name"
     if [[ ! -d "$gold_dir" ]]; then
-        echo -e "  ${YELLOW}SKIP${NC} - Gold files not found: $gold_dir"
+        echo -e "${YELLOW}SKIP${NC} - Gold files not found: $gold_dir"
         return 2
     fi
 
@@ -302,7 +302,7 @@ run_single_test() {
     local exec_path=$(get_exec_path "$test_name")
     local exec_file=$(ls "$exec_path"/erf_* 2>/dev/null | head -1) || true
     if [[ -z "$exec_file" || ! -x "$exec_file" ]]; then
-        echo -e "  ${YELLOW}SKIP${NC} - No executable found in $exec_path"
+        echo -e "${YELLOW}SKIP${NC} - No executable found in $exec_path"
         return 2
     fi
 
@@ -347,7 +347,7 @@ run_single_test() {
 
         # Check if output plotfile exists
         if [[ ! -d "$pltfile" ]]; then
-            echo -e "  ${RED}FAIL${NC} - Output $pltfile not found (${elapsed}s)"
+            echo -e "${RED}FAIL${NC} - Output $pltfile not found (${elapsed}s)"
             popd > /dev/null
             return 1
         fi
@@ -366,23 +366,23 @@ run_single_test() {
             fi
 
             if $particle_check_passed; then
-                echo -e "  ${GREEN}PASS${NC} (${elapsed}s)"
+                echo -e "${GREEN}PASS${NC} (${elapsed}s)"
                 popd > /dev/null
                 return 0
             else
-                echo -e "  ${RED}FAIL${NC} - Particle comparison failed (${elapsed}s)"
+                echo -e "${RED}FAIL${NC} - Particle comparison failed (${elapsed}s)"
                 popd > /dev/null
                 return 1
             fi
         else
-            echo -e "  ${RED}FAIL${NC} - Field comparison failed (${elapsed}s)"
+            echo -e "${RED}FAIL${NC} - Field comparison failed (${elapsed}s)"
             popd > /dev/null
             return 1
         fi
     else
         local end_time=$(date +%s)
         local elapsed=$((end_time - start_time))
-        echo -e "  ${RED}FAIL${NC} - Execution failed (${elapsed}s)"
+        echo -e "${RED}FAIL${NC} - Execution failed (${elapsed}s)"
         popd > /dev/null
         return 1
     fi
@@ -416,6 +416,14 @@ run_tests() {
     local failed=0
     local skipped=0
 
+    # Calculate max test name length for alignment
+    local max_name_len=0
+    for test_name in "${tests_to_run[@]}"; do
+        if [[ ${#test_name} -gt $max_name_len ]]; then
+            max_name_len=${#test_name}
+        fi
+    done
+
     echo ""
     echo -e "${BOLD}Running SDM Regression Tests${NC}"
     echo "Platform:   $PLATFORM"
@@ -427,11 +435,11 @@ run_tests() {
     local start_time=$(date +%s)
 
     for test_name in "${tests_to_run[@]}"; do
-        echo -n "[$((passed + failed + skipped + 1))/$total] $test_name: "
+        printf "[%d/%d] %-${max_name_len}s : " "$((passed + failed + skipped + 1))" "$total" "$test_name"
 
         # Verify test exists
         if [[ ! -d "$ERF_HOME/Tests/test_files/$test_name" ]]; then
-            echo -e "  ${YELLOW}SKIP${NC} - Test directory not found"
+            echo -e "${YELLOW}SKIP${NC} - Test directory not found"
             ((++skipped))
             continue
         fi
