@@ -418,8 +418,8 @@ run_tests() {
             continue
         fi
 
-        run_single_test "$test_name"
-        local result=$?
+        local result=0
+        run_single_test "$test_name" || result=$?
 
         case $result in
             0) ((passed++)) ;;
