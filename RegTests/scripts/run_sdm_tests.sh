@@ -414,7 +414,7 @@ run_tests() {
         # Verify test exists
         if [[ ! -d "$ERF_HOME/Tests/test_files/$test_name" ]]; then
             echo -e "  ${YELLOW}SKIP${NC} - Test directory not found"
-            ((skipped++))
+            ((++skipped))
             continue
         fi
 
@@ -422,9 +422,9 @@ run_tests() {
         run_single_test "$test_name" || result=$?
 
         case $result in
-            0) ((passed++)) ;;
-            1) ((failed++)) ;;
-            2) ((skipped++)) ;;
+            0) ((++passed)) ;;
+            1) ((++failed)) ;;
+            2) ((++skipped)) ;;
         esac
     done
 
