@@ -283,6 +283,11 @@ VERBOSE=""
 RUN_ALL=""
 declare -a CASE_ARRAY=()  # Array to collect multiple case arguments
 
+# Display help if no arguments provided
+if [[ $# -eq 0 ]]; then
+    usage
+fi
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -c|--case=*)
