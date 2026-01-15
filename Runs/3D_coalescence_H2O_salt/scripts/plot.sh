@@ -432,6 +432,8 @@ run_python_plot() {
     fi
 
     info "Running Python to generate plot files"
+    info "  Case: $case_name"
+    info "  Kernel: $kernel"
     python "$script_path"
 }
 
@@ -450,6 +452,11 @@ DRY_RUN=""
 VERBOSE=""
 PLOT_ALL=""
 declare -a CASE_ARRAY=()  # Array to collect multiple case arguments
+
+# Display help if no arguments provided
+if [[ $# -eq 0 ]]; then
+    usage
+fi
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -552,25 +559,64 @@ run_python_with_kernel() {
 
     # Ensure proper case for kernel name
     local kernel_dir="$kernel_name"
+
     # Capitalize first letter for Halls and Longs
     if [[ "$kernel_name" == "halls" || "$kernel_name" == "longs" ]]; then
         kernel_dir="${kernel_name^}"  # Capitalize first letter
     fi
 
+    # Debug output
+    info "Running Python plotting with:"
+    info "  kernel: $kernel_name"
+    info "  kernel_dir: $kernel_dir"
+    info "  case: $case_name"
+    info "  platform: $platform"
+
+    # Check if the directories for this case/platform actually exist
+    if [[ "$kernel_name" == "halls" || "$kernel_name" == "Halls" ]]; then
+        info "Checking for run directories:"
+        info "  $(find $ROOT_DIR -maxdepth 1 -name ".run_*${kernel_dir}*${platform}*" | xargs -n 1 basename)"
+    fi
+
     run_python_plot "$kernel_dir" "$platform" "$output_dir" "$output_format" "$case_name"
 }
 
-# Process each kernel
-for kernel in "${KERNELS[@]}"; do
-    info "Processing kernel: $kernel"
+# Process each case individually
+if [[ "$CASE" == "all" ]]; then
+    # If all cases requested, get the full list
+    case_list=($(get_all_cases))
+elif [[ "$CASE" == *","* ]]; then
+    # If comma-separated list, split into array
+    IFS=',' read -ra case_list <<< "$CASE"
+else
+    # Single case
+    case_list=("$CASE")
+fi
+
+for case_item in "${case_list[@]}"; do
+    info "Processing case: $case_item"
+
+    # Extract kernel from case name
+    if [[ "$case_item" == *"golovin"* ]]; then
+        kernel="golovin"
+    elif [[ "$case_item" == *"Halls"* ]]; then
+        kernel="halls"
+    elif [[ "$case_item" == *"Longs"* ]]; then
+        kernel="longs"
+    elif [[ "$case_item" == *"sedim"* ]]; then
+        kernel="sedim"
+    else
+        warn "Unknown kernel type in case: $case_item, skipping"
+        continue
+    fi
 
     # Choose plotting engine based on user selection
     if [[ "$PLOT_ENGINE" == "python" ]]; then
         # Use Python for plotting with proper case handling
-        run_python_with_kernel "$kernel" "$PLATFORM" "$OUTPUT_DIR" "$OUTPUT_FORMAT" "$CASE"
+        run_python_with_kernel "$kernel" "$PLATFORM" "$OUTPUT_DIR" "$OUTPUT_FORMAT" "$case_item"
     else
         # Default to gnuplot
-        script=$(generate_plot_script "$kernel" "$PLATFORM" "$OUTPUT_DIR" "$OUTPUT_FORMAT" "$CASE")
+        script=$(generate_plot_script "$kernel" "$PLATFORM" "$OUTPUT_DIR" "$OUTPUT_FORMAT" "$case_item")
         run_gnuplot "$script" "$MODE"
     fi
 

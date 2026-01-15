@@ -63,10 +63,21 @@ STYLES = {
 # Function to read data files
 def read_data(filepath):
     try:
+        # Check if file exists
+        if not os.path.exists(filepath):
+            print(f"File does not exist: {filepath}")
+            return None
+
+        # Read the data
         data = np.loadtxt(filepath)
+
+        # Check if data is valid
+        if data is None or data.size == 0:
+            print(f"Empty data in file: {filepath}")
+            return None
         return data
-    except:
-        print(f"Error reading file: {filepath}")
+    except Exception as e:
+        print(f"Error reading file {filepath}: {str(e)}")
         return None
 
 # Functions to generate plots
@@ -88,7 +99,7 @@ def plot_c1_golovin():
     legend_labels = []
 
     # Filter based on case name if provided
-    if CASE_NAME == "c1_ppb_2_13_golovin":
+    if CASE_NAME and "c1_ppb_2_13_golovin" in CASE_NAME:
         # Only plot 2^13 case
         data_files.extend([
             f"{ROOT_DIR}/.run_c1_ppb_2_13_golovin.{PLATFORM}.nproc00001/super_droplets_moisture_g_lnR_00000.txt",
@@ -108,7 +119,7 @@ def plot_c1_golovin():
             STYLES['ppb_2_13']['t2'],
             STYLES['ppb_2_13']['t3']
         ]
-    elif CASE_NAME == "c1_ppb_2_17_golovin":
+    elif CASE_NAME and "c1_ppb_2_17_golovin" in CASE_NAME:
         # Only plot 2^17 case
         data_files.extend([
             f"{ROOT_DIR}/.run_c1_ppb_2_17_golovin.{PLATFORM}.nproc00001/super_droplets_moisture_g_lnR_00000.txt",
@@ -170,8 +181,14 @@ def plot_c1_golovin():
     ax.legend(loc='upper right')
     plt.tight_layout()
 
-    # Save plot
-    output_file = f"{OUTPUT_DIR}/Golovin.{PLATFORM}.{OUTPUT_FORMAT}"
+    # Save plot with case name as the filename if specified
+    if CASE_NAME and CASE_NAME != "all":
+        # Use the specific case name
+        output_file = f"{OUTPUT_DIR}/{CASE_NAME}.{PLATFORM}.{OUTPUT_FORMAT}"
+    else:
+        # Fall back to kernel name if no specific case
+        output_file = f"{OUTPUT_DIR}/Golovin.{PLATFORM}.{OUTPUT_FORMAT}"
+
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"Saved plot to {output_file}")
 
@@ -200,7 +217,7 @@ def plot_c2_kernel(kernel_name):
     legend_labels = []
 
     # Filter based on case name if provided
-    if CASE_NAME == f"c2_ppb_2_13_{kernel_name}":
+    if CASE_NAME and f"c2_ppb_2_13_{kernel_name}" in CASE_NAME:
         # Only plot 2^13 case
         data_files.extend([
             f"{ROOT_DIR}/.run_c2_ppb_2_13_{kernel_name}.{PLATFORM}.nproc00001/super_droplets_moisture_g_lnR_00000.txt",
@@ -220,7 +237,7 @@ def plot_c2_kernel(kernel_name):
             STYLES['ppb_2_13']['t2'],
             STYLES['ppb_2_13']['t3']
         ]
-    elif CASE_NAME == f"c2_ppb_2_17_{kernel_name}":
+    elif CASE_NAME and f"c2_ppb_2_17_{kernel_name}" in CASE_NAME:
         # Only plot 2^17 case
         data_files.extend([
             f"{ROOT_DIR}/.run_c2_ppb_2_17_{kernel_name}.{PLATFORM}.nproc00001/super_droplets_moisture_g_lnR_00000.txt",
@@ -282,8 +299,14 @@ def plot_c2_kernel(kernel_name):
     ax.legend(loc='upper right')
     plt.tight_layout()
 
-    # Save plot
-    output_file = f"{OUTPUT_DIR}/{kernel_name}.{PLATFORM}.{OUTPUT_FORMAT}"
+    # Save plot with case name as the filename if specified
+    if CASE_NAME and CASE_NAME != "all":
+        # Use the specific case name
+        output_file = f"{OUTPUT_DIR}/{CASE_NAME}.{PLATFORM}.{OUTPUT_FORMAT}"
+    else:
+        # Fall back to kernel name if no specific case
+        output_file = f"{OUTPUT_DIR}/{kernel_name}.{PLATFORM}.{OUTPUT_FORMAT}"
+
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"Saved plot to {output_file}")
 
@@ -314,7 +337,7 @@ def plot_c3_kernel(kernel_name):
     legend_labels = []
 
     # Filter based on case name if provided
-    if CASE_NAME == f"c3_ppb_2_17_{kernel_name}":
+    if CASE_NAME and f"c3_ppb_2_17_{kernel_name}" in CASE_NAME:
         # Only plot 2^17 case
         data_files.extend([
             f"{ROOT_DIR}/.run_c3_ppb_2_17_{kernel_name}.{PLATFORM}.nproc00001/super_droplets_moisture_g_lnR_00000.txt",
@@ -334,7 +357,7 @@ def plot_c3_kernel(kernel_name):
             STYLES['ppb_2_17']['t2'],
             STYLES['ppb_2_17']['t3']
         ]
-    elif CASE_NAME == f"c3_ppb_2_21_{kernel_name}":
+    elif CASE_NAME and f"c3_ppb_2_21_{kernel_name}" in CASE_NAME:
         # Only plot 2^21 case
         data_files.extend([
             f"{ROOT_DIR}/.run_c3_ppb_2_21_{kernel_name}.{PLATFORM}.nproc00001/super_droplets_moisture_g_lnR_00000.txt",
@@ -396,8 +419,14 @@ def plot_c3_kernel(kernel_name):
     ax.legend(loc='upper right')
     plt.tight_layout()
 
-    # Save plot
-    output_file = f"{OUTPUT_DIR}/{kernel_name}.c3.{PLATFORM}.{OUTPUT_FORMAT}"
+    # Save plot with case name as the filename if specified
+    if CASE_NAME and CASE_NAME != "all":
+        # Use the specific case name
+        output_file = f"{OUTPUT_DIR}/{CASE_NAME}.{PLATFORM}.{OUTPUT_FORMAT}"
+    else:
+        # Fall back to kernel name if no specific case
+        output_file = f"{OUTPUT_DIR}/{kernel_name}.c3.{PLATFORM}.{OUTPUT_FORMAT}"
+
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"Saved plot to {output_file}")
 
@@ -413,11 +442,18 @@ def main():
     if KERNEL == "golovin":
         plot_c1_golovin()
     elif KERNEL in ["Halls", "Longs", "sedim"]:
-        plot_c2_kernel(KERNEL)
+        # Check if this is a C3 case
+        if CASE_NAME and "c3_" in CASE_NAME:
+            # Only plot C3 cases for Halls and Longs kernels
+            if KERNEL in ["Halls", "Longs"]:
+                plot_c3_kernel(KERNEL)
+        # Check if this is a C2 case or "all"
+        elif not CASE_NAME or "c2_" in CASE_NAME or CASE_NAME == "all":
+            plot_c2_kernel(KERNEL)
 
-        # Only plot C3 cases for Halls and Longs kernels
-        if KERNEL in ["Halls", "Longs"]:
-            plot_c3_kernel(KERNEL)
+            # Additionally plot C3 cases for "all" cases with Halls and Longs kernels
+            if CASE_NAME == "all" and KERNEL in ["Halls", "Longs"]:
+                plot_c3_kernel(KERNEL)
     else:
         print(f"Unknown kernel type: {KERNEL}")
         sys.exit(1)
