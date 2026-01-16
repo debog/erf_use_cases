@@ -7,7 +7,8 @@
 #   ./plot.sh [OPTIONS]
 #
 # Options:
-#   -c, --case=NAMES      Case names to plot (can be specified multiple times, or comma-separated, e.g. -c c1_ppb_2_13_golovin -c c2_ppb_2_13_Halls) (default: all)
+#   -c, --case=NAMES      Case names to plot (can be specified multiple times, or comma-separated, e.g. -c c1_ppb_2_13_golovin -c c2_ppb_2_13_Halls)
+#                          Supports wildcards (e.g. -c c1* for all C1 cases, -c *_2_13_* for all 2^13 cases) (default: all)
 #   -k, --kernel=TYPE     Kernel type to plot (golovin, halls, longs, sedim) (default: all)
 #   -f, --format=FORMAT   Output format (png, eps, pdf) (default: png)
 #   -d, --directory=DIR   Output directory for plots (default: ./plots)
@@ -514,6 +515,44 @@ if [[ ${#CASE_ARRAY[@]} -gt 0 ]]; then
 
     # Join the array with commas
     CASE=$(IFS=,; echo "${CASE_ARRAY[*]}")
+fi
+
+# Handle wildcard patterns in case names
+if [[ "$CASE" == *"*"* || "$CASE" == *"?"* ]]; then
+    # Split by commas if multiple patterns
+    if [[ "$CASE" == *","* ]]; then
+        IFS=',' read -ra pattern_array <<< "$CASE"
+
+        # Clear CASE for new matched cases
+        CASE=""
+
+        # Process each pattern
+        for pattern in "${pattern_array[@]}"; do
+            matching=$(match_cases "$pattern")
+            if [[ -n "$matching" ]]; then
+                # Add matching cases to CASE with comma separation
+                if [[ -n "$CASE" ]]; then
+                    CASE="$CASE,$matching"
+                else
+                    CASE="$matching"
+                fi
+            else
+                warn "No cases match pattern: $pattern"
+            fi
+        done
+    else
+        # Single pattern
+        matching=$(match_cases "$CASE")
+        if [[ -n "$matching" ]]; then
+            CASE="$matching"
+        else
+            warn "No cases match pattern: $CASE"
+            exit 1
+        fi
+    fi
+
+    # Debug output for matched cases
+    debug "Expanded case patterns to: $CASE"
 fi
 
 # Set defaults

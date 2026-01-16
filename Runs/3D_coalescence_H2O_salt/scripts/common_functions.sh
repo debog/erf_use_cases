@@ -40,6 +40,26 @@ get_all_cases() {
          "c3_ppb_2_17_Halls" "c3_ppb_2_17_Longs" "c3_ppb_2_21_Halls" "c3_ppb_2_21_Longs"
 }
 
+# Get cases matching a pattern
+# Returns a comma-separated list of cases matching the given pattern
+match_cases() {
+    local pattern="$1"
+    local all_cases=($(get_all_cases))
+    local matching_cases=()
+
+    for case in "${all_cases[@]}"; do
+        # Use bash pattern matching
+        if [[ "$case" == $pattern ]]; then
+            matching_cases+=("$case")
+        fi
+    done
+
+    # Return the matching cases as comma-separated list
+    if [[ ${#matching_cases[@]} -gt 0 ]]; then
+        (IFS=,; echo "${matching_cases[*]}")
+    fi
+}
+
 # List available input cases in a formatted way
 list_cases() {
     echo "Available cases:"
