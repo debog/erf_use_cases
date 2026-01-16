@@ -572,11 +572,8 @@ run_python_with_kernel() {
     info "  case: $case_name"
     info "  platform: $platform"
 
-    # Check if the directories for this case/platform actually exist
-    if [[ "$kernel_name" == "halls" || "$kernel_name" == "Halls" ]]; then
-        info "Checking for run directories:"
-        info "  $(find $ROOT_DIR -maxdepth 1 -name ".run_*${kernel_dir}*${platform}*" | xargs -n 1 basename)"
-    fi
+    # Silently check if run directories exist (no output)
+    # Removed debug output that was listing all directories
 
     run_python_plot "$kernel_dir" "$platform" "$output_dir" "$output_format" "$case_name"
 }
