@@ -327,6 +327,12 @@ else
 fi
 
 for case_item in "${case_list[@]}"; do
+    # Skip c3_ppb_2_21* cases as they take too long and don't finish within the max walltime limit
+    if [[ "$case_item" == c3_ppb_2_21* ]]; then
+        warn "Skipping $case_item (exceeds max walltime)"
+        continue
+    fi
+
     info "Processing case: $case_item"
 
     # Extract kernel from case name
