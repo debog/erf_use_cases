@@ -193,13 +193,21 @@ EOF
 
     if [[ "$GPU_SUPPORT" == "true" ]]; then
         echo "#SBATCH --gpus-per-task=${GPUS_PER_TASK}" >> "$jobfile"
+        if [[ "$PLATFORM" == "matrix" ]]; then
+            # Matrix needs to specify total GPUs with -G flag
+            echo "#SBATCH -G $NTASKS" >> "$jobfile"
+        fi
     fi
 
     cat >> "$jobfile" << EOF
 
 export OMP_NUM_THREADS=1
 
-srun -n ${NTASKS} $EXEC $INP $ERF_EXTRA_ARGS 2>&1 | tee out.${PLATFORM}.log
+if [[ "$PLATFORM" == "matrix" && "$GPU_SUPPORT" == "true" ]]; then
+    srun -n ${NTASKS} -G ${NTASKS} --gpus-per-task=${GPUS_PER_TASK} $EXEC $INP $ERF_EXTRA_ARGS 2>&1 | tee out.${PLATFORM}.log
+else
+    srun -n ${NTASKS} $EXEC $INP $ERF_EXTRA_ARGS 2>&1 | tee out.${PLATFORM}.log
+fi
 EOF
 }
 
@@ -247,7 +255,12 @@ run_interactive() {
             local debug_queue=$(get_config "$PLATFORM" "debug_queue" "pdebug")
             runcmd="srun -n $NTASKS -N $NNODES -p $debug_queue --exclusive"
             if [[ "$GPU_SUPPORT" == "true" ]]; then
-                runcmd="$runcmd --gpus-per-task=${GPUS_PER_TASK}"
+                if [[ "$PLATFORM" == "matrix" ]]; then
+                    # Matrix needs the -G flag to specify number of GPUs to allocate
+                    runcmd="$runcmd -G $NTASKS --gpus-per-task=${GPUS_PER_TASK}"
+                else
+                    runcmd="$runcmd --gpus-per-task=${GPUS_PER_TASK}"
+                fi
             fi
             ;;
         flux)
@@ -420,7 +433,7 @@ SCHEDULER=$(get_config "$PLATFORM" "scheduler")
 NTASKS="${OVERRIDE_NTASKS:-$(get_config "$PLATFORM" "ntasks" "4")}"
 NNODES="${OVERRIDE_NNODES:-$(get_config "$PLATFORM" "nnodes" "1")}"
 QUEUE="${OVERRIDE_QUEUE:-$(get_config "$PLATFORM" "queue")}"
-WALLTIME="${OVERRIDE_WALLTIME:-$(get_config "$PLATFORM" "walltime" "1:00:00")}"
+WALLTIME="${OVERRIDE_WALLTIME:-$(get_config "$PLATFORM" "walltime" "12:00:00")}"
 GPU_SUPPORT=$(get_config "$PLATFORM" "gpu_support" "false")
 GPUS_PER_TASK=$(get_config "$PLATFORM" "gpus_per_task" "1")
 ACCOUNT=$(get_config "$PLATFORM" "account")
@@ -488,7 +501,12 @@ create_run_script() {
             local debug_queue=$(get_config "$PLATFORM" "debug_queue" "pdebug")
             mpi_cmd="srun -n $NTASKS -N $NNODES -p $debug_queue --exclusive"
             if [[ "$GPU_SUPPORT" == "true" ]]; then
-                mpi_cmd="$mpi_cmd --gpus-per-task=${GPUS_PER_TASK}"
+                if [[ "$PLATFORM" == "matrix" ]]; then
+                    # Matrix needs the -G flag to specify number of GPUs to allocate
+                    mpi_cmd="$mpi_cmd -G $NTASKS --gpus-per-task=${GPUS_PER_TASK}"
+                else
+                    mpi_cmd="$mpi_cmd --gpus-per-task=${GPUS_PER_TASK}"
+                fi
             fi
             ;;
         flux)

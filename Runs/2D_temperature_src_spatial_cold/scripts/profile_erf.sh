@@ -277,6 +277,10 @@ EOF
 
     if [[ "$GPU_SUPPORT" == "true" ]]; then
         echo "#SBATCH --gpus-per-task=${GPUS_PER_TASK}" >> "$jobfile"
+        if [[ "$PLATFORM" == "matrix" ]]; then
+            # Matrix needs to specify total GPUs with -G flag
+            echo "#SBATCH -G $NTASKS" >> "$jobfile"
+        fi
     fi
 
     cat >> "$jobfile" << EOF
@@ -292,7 +296,11 @@ local erf_args="max_step=$MAX_STEPS"
 [[ -n "$STOP_TIME" ]] && erf_args="$erf_args stop_time=$STOP_TIME"
 
 # Run with profiler
-srun -n ${NTASKS} $prof_cmd $EXEC $INP $erf_args 2>&1 | tee out.profile.${PLATFORM}.log
+if [[ "$PLATFORM" == "matrix" && "$GPU_SUPPORT" == "true" ]]; then
+    srun -n ${NTASKS} -G ${NTASKS} --gpus-per-task=${GPUS_PER_TASK} $prof_cmd $EXEC $INP $erf_args 2>&1 | tee out.profile.${PLATFORM}.log
+else
+    srun -n ${NTASKS} $prof_cmd $EXEC $INP $erf_args 2>&1 | tee out.profile.${PLATFORM}.log
+fi
 
 echo "Profiling completed at \$(date)"
 echo "Profile output: \$(ls -la ${PROFILE_OUTPUT}* 2>/dev/null || echo 'Check working directory')"
@@ -360,7 +368,12 @@ run_profile_interactive() {
             local debug_queue=$(get_config "$PLATFORM" "debug_queue" "pdebug")
             runcmd="srun -n $NTASKS -N $NNODES -p $debug_queue --exclusive"
             if [[ "$GPU_SUPPORT" == "true" ]]; then
-                runcmd="$runcmd --gpus-per-task=${GPUS_PER_TASK}"
+                if [[ "$PLATFORM" == "matrix" ]]; then
+                    # Matrix needs the -G flag to specify number of GPUs to allocate
+                    runcmd="$runcmd -G $NTASKS --gpus-per-task=${GPUS_PER_TASK}"
+                else
+                    runcmd="$runcmd --gpus-per-task=${GPUS_PER_TASK}"
+                fi
             fi
             ;;
         flux)
@@ -637,7 +650,7 @@ SCHEDULER=$(get_config "$PLATFORM" "scheduler")
 NTASKS="${OVERRIDE_NTASKS:-$(get_config "$PLATFORM" "ntasks" "4")}"
 NNODES="${OVERRIDE_NNODES:-$(get_config "$PLATFORM" "nnodes" "1")}"
 QUEUE="${OVERRIDE_QUEUE:-$(get_config "$PLATFORM" "queue")}"
-WALLTIME="${OVERRIDE_WALLTIME:-$(get_config "$PLATFORM" "walltime" "1:00:00")}"
+WALLTIME="${OVERRIDE_WALLTIME:-$(get_config "$PLATFORM" "walltime" "12:00:00")}"
 GPU_SUPPORT=$(get_config "$PLATFORM" "gpu_support" "false")
 GPUS_PER_TASK=$(get_config "$PLATFORM" "gpus_per_task" "1")
 ACCOUNT=$(get_config "$PLATFORM" "account")
@@ -702,7 +715,12 @@ create_profile_script() {
             local debug_queue=$(get_config "$PLATFORM" "debug_queue" "pdebug")
             mpi_cmd="srun -n $NTASKS -N $NNODES -p $debug_queue --exclusive"
             if [[ "$GPU_SUPPORT" == "true" ]]; then
-                mpi_cmd="$mpi_cmd --gpus-per-task=${GPUS_PER_TASK}"
+                if [[ "$PLATFORM" == "matrix" ]]; then
+                    # Matrix needs the -G flag to specify number of GPUs to allocate
+                    mpi_cmd="$mpi_cmd -G $NTASKS --gpus-per-task=${GPUS_PER_TASK}"
+                else
+                    mpi_cmd="$mpi_cmd --gpus-per-task=${GPUS_PER_TASK}"
+                fi
             fi
             ;;
         flux)
