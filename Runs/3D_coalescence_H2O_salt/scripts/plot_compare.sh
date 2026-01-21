@@ -11,8 +11,9 @@
 #                          Supports wildcards (e.g. -c c1* for all C1 cases, -c *_2_13_* for all 2^13 cases) (default: all)
 #   -k, --kernel=TYPE     Kernel type to compare (golovin, halls, longs, sedim) (default: all)
 #   -f, --format=FORMAT   Output format (png, eps, pdf) (default: png)
-#   -d, --directory=DIR   Output directory for comparison plots (default: ./plots/benchmark)
+#   -d, --directory=DIR   Output directory for comparison plots (default: ./plots)
 #   -a, --all             Compare all cases
+#   -n, --novalidate      Skip validation against baseline (validation is enabled by default)
 #   --dry-run             Show what would be executed without running
 #   -v, --verbose         Enable verbose output
 #   -l, --list-cases      List available cases to compare
@@ -109,6 +110,12 @@ run_benchmark_comparison() {
     local script_path="$output_dir/benchmark_${kernel}_${platform}.py"
 
     # Generate Python script from template
+    # Determine if validate mode is enabled
+    validate_flag="false"
+    if [[ -n "$VALIDATE" ]]; then
+        validate_flag="true"
+    fi
+
     sed -e "s|{root_dir}|$ROOT_DIR|g" \
         -e "s|{baseline_dir}|$BASELINE_DIR|g" \
         -e "s|{platform}|$platform|g" \
@@ -116,6 +123,7 @@ run_benchmark_comparison() {
         -e "s|{output_format}|$output_format|g" \
         -e "s|{case_name}|$case_name|g" \
         -e "s|{kernel}|$kernel|g" \
+        -e "s|{validate}|$validate_flag|g" \
         "$SCRIPT_DIR/plot_compare_template.py" > "$script_path"
 
     # Make script executable
@@ -184,6 +192,7 @@ OUTPUT_DIR="$PLOTS_DIR"
 DRY_RUN=""
 VERBOSE=""
 PLOT_ALL=""
+VALIDATE="1"  # Validation is enabled by default
 declare -a CASE_ARRAY=()  # Array to collect multiple case arguments
 
 # Display help if no arguments provided
@@ -216,6 +225,7 @@ while [[ $# -gt 0 ]]; do
         -d|--directory=*)
             [[ "$1" == -d ]] && { shift; OUTPUT_DIR="$1"; } || OUTPUT_DIR="${1#*=}" ;;
         -a|--all)       PLOT_ALL=1 ;;
+        -n|--novalidate) VALIDATE="" ;;
         --dry-run)      DRY_RUN=1 ;;
         -v|--verbose)   VERBOSE=1 ;;
         -l|--list-cases) list_cases; exit 0 ;;
