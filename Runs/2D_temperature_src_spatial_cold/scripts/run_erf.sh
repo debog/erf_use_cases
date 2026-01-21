@@ -474,13 +474,64 @@ ERF_EXTRA_ARGS=""
 # Trim leading space if present
 ERF_EXTRA_ARGS="${ERF_EXTRA_ARGS# }"
 
+# Create a run script in the run directory
+create_run_script() {
+    local script_file="$WORKDIR/run.sh"
+    info "Creating run script in the run directory: $script_file"
+
+    # Get the platform-specific MPI launcher
+    local mpi_cmd=""
+    local scheduler=$(get_config "$PLATFORM" "scheduler")
+
+    case "$scheduler" in
+        slurm)
+            local debug_queue=$(get_config "$PLATFORM" "debug_queue" "pdebug")
+            mpi_cmd="srun -n $NTASKS -N $NNODES -p $debug_queue --exclusive"
+            if [[ "$GPU_SUPPORT" == "true" ]]; then
+                mpi_cmd="$mpi_cmd --gpus-per-task=${GPUS_PER_TASK}"
+            fi
+            ;;
+        flux)
+            local debug_queue=$(get_config "$PLATFORM" "debug_queue" "pdebug")
+            mpi_cmd="flux run --exclusive --nodes=$NNODES --ntasks $NTASKS -q=$debug_queue"
+            ;;
+        direct)
+            local mpi_launcher=$(get_config "$PLATFORM" "mpi_launcher" "mpirun")
+            if command -v "$mpi_launcher" &>/dev/null; then
+                mpi_cmd="$mpi_launcher -n $NTASKS"
+            fi
+            ;;
+        *)
+            mpi_cmd=""
+            ;;
+    esac
+
+    cat > "$script_file" << EOF
+#!/bin/bash
+# Auto-generated run script by run_erf.sh on $(date)
+# Run this script to execute ERF in the current directory
+
+export OMP_NUM_THREADS=1
+
+# Execute the ERF binary with appropriate launcher
+$mpi_cmd $EXEC $INP $ERF_EXTRA_ARGS 2>&1 | tee run_output.log
+
+# Exit with the status of the ERF executable
+exit \${PIPESTATUS[0]}
+EOF
+
+    chmod +x "$script_file"
+}
+
 # Execute based on mode
 case "$MODE" in
     interactive|i)
         run_interactive
+        create_run_script
         ;;
     batch|b)
         run_batch
+        create_run_script
         ;;
     *)
         error "Unknown mode: $MODE (use 'interactive' or 'batch')"

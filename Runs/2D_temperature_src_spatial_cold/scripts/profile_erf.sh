@@ -685,13 +685,74 @@ else
     warn "ERF_HOME environment variable not set, cannot link input_sounding"
 fi
 
+# Create a profile script in the run directory
+create_profile_script() {
+    local script_file="$WORKDIR/profile.sh"
+    prof "Creating profile script in the run directory: $script_file"
+
+    local prof_cmd=$(get_profiler_cmd "$PROFILER")
+    prof_cmd="${prof_cmd//profile/$PROFILE_OUTPUT}"
+
+    # Get the platform-specific MPI launcher
+    local mpi_cmd=""
+    local scheduler=$(get_config "$PLATFORM" "scheduler")
+
+    case "$scheduler" in
+        slurm)
+            local debug_queue=$(get_config "$PLATFORM" "debug_queue" "pdebug")
+            mpi_cmd="srun -n $NTASKS -N $NNODES -p $debug_queue --exclusive"
+            if [[ "$GPU_SUPPORT" == "true" ]]; then
+                mpi_cmd="$mpi_cmd --gpus-per-task=${GPUS_PER_TASK}"
+            fi
+            ;;
+        flux)
+            local debug_queue=$(get_config "$PLATFORM" "debug_queue" "pdebug")
+            mpi_cmd="flux run --exclusive --nodes=$NNODES --ntasks $NTASKS -q=$debug_queue"
+            ;;
+        direct)
+            local mpi_launcher=$(get_config "$PLATFORM" "mpi_launcher" "mpirun")
+            if command -v "$mpi_launcher" &>/dev/null; then
+                mpi_cmd="$mpi_launcher -n $NTASKS"
+            fi
+            ;;
+        *)
+            mpi_cmd=""
+            ;;
+    esac
+
+    cat > "$script_file" << EOF
+#!/bin/bash
+# Auto-generated profile script by profile_erf.sh on $(date)
+# Run this script to profile ERF in the current directory
+
+export OMP_NUM_THREADS=1
+
+# Platform-specific profiler environment variables
+$(case "$PLATFORM" in
+    matrix) echo 'export CUDA_INJECTION64_PATH=""' ;;
+    tuolumne) echo 'export HSA_TOOLS_LIB=""' ;;
+    *) echo '# No special environment variables needed for this platform' ;;
+esac)
+
+# Execute the ERF binary with profiler and appropriate launcher
+$mpi_cmd $prof_cmd $EXEC $INP max_step=$MAX_STEPS 2>&1 | tee profile_output.log
+
+# Exit with the status of the ERF executable
+exit \${PIPESTATUS[0]}
+EOF
+
+    chmod +x "$script_file"
+}
+
 # Execute based on mode
 case "$MODE" in
     interactive|i)
         run_profile_interactive
+        create_profile_script
         ;;
     batch|b)
         run_profile_batch
+        create_profile_script
         ;;
     *)
         error "Unknown mode: $MODE (use 'interactive' or 'batch')"
