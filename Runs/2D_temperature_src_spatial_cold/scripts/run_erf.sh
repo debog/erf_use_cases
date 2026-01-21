@@ -193,21 +193,13 @@ EOF
 
     if [[ "$GPU_SUPPORT" == "true" ]]; then
         echo "#SBATCH --gpus-per-task=${GPUS_PER_TASK}" >> "$jobfile"
-        if [[ "$PLATFORM" == "matrix" ]]; then
-            # Matrix needs to specify total GPUs with -G flag
-            echo "#SBATCH -G $NTASKS" >> "$jobfile"
-        fi
     fi
 
     cat >> "$jobfile" << EOF
 
 export OMP_NUM_THREADS=1
 
-if [[ "$PLATFORM" == "matrix" && "$GPU_SUPPORT" == "true" ]]; then
-    srun -n ${NTASKS} -G ${NTASKS} --gpus-per-task=${GPUS_PER_TASK} $EXEC $INP $ERF_EXTRA_ARGS 2>&1 | tee out.${PLATFORM}.log
-else
-    srun -n ${NTASKS} $EXEC $INP $ERF_EXTRA_ARGS 2>&1 | tee out.${PLATFORM}.log
-fi
+srun -n ${NTASKS} --exclusive $EXEC $INP $ERF_EXTRA_ARGS 2>&1 | tee out.${PLATFORM}.log
 EOF
 }
 
@@ -255,12 +247,7 @@ run_interactive() {
             local debug_queue=$(get_config "$PLATFORM" "debug_queue" "pdebug")
             runcmd="srun -n $NTASKS -N $NNODES -p $debug_queue --exclusive"
             if [[ "$GPU_SUPPORT" == "true" ]]; then
-                if [[ "$PLATFORM" == "matrix" ]]; then
-                    # Matrix needs the -G flag to specify number of GPUs to allocate
-                    runcmd="$runcmd -G $NTASKS --gpus-per-task=${GPUS_PER_TASK}"
-                else
-                    runcmd="$runcmd --gpus-per-task=${GPUS_PER_TASK}"
-                fi
+                runcmd="$runcmd --gpus-per-task=${GPUS_PER_TASK}"
             fi
             ;;
         flux)
@@ -501,12 +488,7 @@ create_run_script() {
             local debug_queue=$(get_config "$PLATFORM" "debug_queue" "pdebug")
             mpi_cmd="srun -n $NTASKS -N $NNODES -p $debug_queue --exclusive"
             if [[ "$GPU_SUPPORT" == "true" ]]; then
-                if [[ "$PLATFORM" == "matrix" ]]; then
-                    # Matrix needs the -G flag to specify number of GPUs to allocate
-                    mpi_cmd="$mpi_cmd -G $NTASKS --gpus-per-task=${GPUS_PER_TASK}"
-                else
-                    mpi_cmd="$mpi_cmd --gpus-per-task=${GPUS_PER_TASK}"
-                fi
+                mpi_cmd="$mpi_cmd --gpus-per-task=${GPUS_PER_TASK}"
             fi
             ;;
         flux)

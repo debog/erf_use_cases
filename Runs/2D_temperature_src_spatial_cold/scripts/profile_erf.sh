@@ -242,10 +242,6 @@ get_profiler_report_cmd() {
 setup_profiler_env() {
     # Platform-specific environment setup for profiling
     case "$PLATFORM" in
-        matrix)
-            # NVIDIA profiling may need elevated permissions
-            export CUDA_INJECTION64_PATH=""
-            ;;
         tuolumne)
             # AMD profiling setup
             export HSA_TOOLS_LIB=""
@@ -277,10 +273,6 @@ EOF
 
     if [[ "$GPU_SUPPORT" == "true" ]]; then
         echo "#SBATCH --gpus-per-task=${GPUS_PER_TASK}" >> "$jobfile"
-        if [[ "$PLATFORM" == "matrix" ]]; then
-            # Matrix needs to specify total GPUs with -G flag
-            echo "#SBATCH -G $NTASKS" >> "$jobfile"
-        fi
     fi
 
     cat >> "$jobfile" << EOF
@@ -296,11 +288,7 @@ local erf_args="max_step=$MAX_STEPS"
 [[ -n "$STOP_TIME" ]] && erf_args="$erf_args stop_time=$STOP_TIME"
 
 # Run with profiler
-if [[ "$PLATFORM" == "matrix" && "$GPU_SUPPORT" == "true" ]]; then
-    srun -n ${NTASKS} -G ${NTASKS} --gpus-per-task=${GPUS_PER_TASK} $prof_cmd $EXEC $INP $erf_args 2>&1 | tee out.profile.${PLATFORM}.log
-else
-    srun -n ${NTASKS} $prof_cmd $EXEC $INP $erf_args 2>&1 | tee out.profile.${PLATFORM}.log
-fi
+srun -n ${NTASKS} --exclusive $prof_cmd $EXEC $INP $erf_args 2>&1 | tee out.profile.${PLATFORM}.log
 
 echo "Profiling completed at \$(date)"
 echo "Profile output: \$(ls -la ${PROFILE_OUTPUT}* 2>/dev/null || echo 'Check working directory')"
@@ -368,12 +356,7 @@ run_profile_interactive() {
             local debug_queue=$(get_config "$PLATFORM" "debug_queue" "pdebug")
             runcmd="srun -n $NTASKS -N $NNODES -p $debug_queue --exclusive"
             if [[ "$GPU_SUPPORT" == "true" ]]; then
-                if [[ "$PLATFORM" == "matrix" ]]; then
-                    # Matrix needs the -G flag to specify number of GPUs to allocate
-                    runcmd="$runcmd -G $NTASKS --gpus-per-task=${GPUS_PER_TASK}"
-                else
-                    runcmd="$runcmd --gpus-per-task=${GPUS_PER_TASK}"
-                fi
+                runcmd="$runcmd --gpus-per-task=${GPUS_PER_TASK}"
             fi
             ;;
         flux)
@@ -715,12 +698,7 @@ create_profile_script() {
             local debug_queue=$(get_config "$PLATFORM" "debug_queue" "pdebug")
             mpi_cmd="srun -n $NTASKS -N $NNODES -p $debug_queue --exclusive"
             if [[ "$GPU_SUPPORT" == "true" ]]; then
-                if [[ "$PLATFORM" == "matrix" ]]; then
-                    # Matrix needs the -G flag to specify number of GPUs to allocate
-                    mpi_cmd="$mpi_cmd -G $NTASKS --gpus-per-task=${GPUS_PER_TASK}"
-                else
-                    mpi_cmd="$mpi_cmd --gpus-per-task=${GPUS_PER_TASK}"
-                fi
+                mpi_cmd="$mpi_cmd --gpus-per-task=${GPUS_PER_TASK}"
             fi
             ;;
         flux)
@@ -747,7 +725,6 @@ export OMP_NUM_THREADS=1
 
 # Platform-specific profiler environment variables
 $(case "$PLATFORM" in
-    matrix) echo 'export CUDA_INJECTION64_PATH=""' ;;
     tuolumne) echo 'export HSA_TOOLS_LIB=""' ;;
     *) echo '# No special environment variables needed for this platform' ;;
 esac)
