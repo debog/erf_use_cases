@@ -13,7 +13,8 @@
 #   -N, --nnodes=N        Override number of nodes
 #   -q, --queue=NAME      Override queue/partition name
 #   -t, --walltime=TIME   Override walltime (e.g., 1:00:00 or 1h)
-#   -s, --max-steps=N     Number of timesteps to run (default: 10)
+#   -s, --max-steps=N     Number of timesteps to run (default: 100)
+#       --max-step=N      Alternative syntax: Number of timesteps to run (default: 100)
 #   -P, --profiler=NAME   Profiler to use (platform-specific, see --list-profilers)
 #   -o, --output=NAME     Profile output name (default: profile)
 #   -r, --report          Generate report after profiling (interactive mode only)
@@ -443,7 +444,7 @@ OVERRIDE_QUEUE=""
 OVERRIDE_WALLTIME=""
 PROFILER=""
 PROFILE_OUTPUT="profile"
-MAX_STEPS="10"
+MAX_STEPS="100"
 GENERATE_REPORT=""
 DRY_RUN=""
 VERBOSE=""
@@ -465,6 +466,8 @@ while [[ $# -gt 0 ]]; do
             [[ "$1" == -t ]] && { shift; OVERRIDE_WALLTIME="$1"; } || OVERRIDE_WALLTIME="${1#*=}" ;;
         -s|--max-steps=*)
             [[ "$1" == -s ]] && { shift; MAX_STEPS="$1"; } || MAX_STEPS="${1#*=}" ;;
+        --max-step=*)
+            MAX_STEPS="${1#*=}" ;;
         -P|--profiler=*)
             [[ "$1" == -P ]] && { shift; PROFILER="$1"; } || PROFILER="${1#*=}" ;;
         -o|--output=*)
