@@ -239,10 +239,6 @@ get_profiler_report_cmd() {
 setup_profiler_env() {
     # Platform-specific environment setup for profiling
     case "$PLATFORM" in
-        matrix)
-            # NVIDIA profiling may need elevated permissions
-            export CUDA_INJECTION64_PATH=""
-            ;;
         tuolumne)
             # AMD profiling setup
             export HSA_TOOLS_LIB=""
@@ -610,7 +606,7 @@ SCHEDULER=$(get_config "$PLATFORM" "scheduler")
 NTASKS="${OVERRIDE_NTASKS:-$(get_config "$PLATFORM" "ntasks" "4")}"
 NNODES="${OVERRIDE_NNODES:-$(get_config "$PLATFORM" "nnodes" "1")}"
 QUEUE="${OVERRIDE_QUEUE:-$(get_config "$PLATFORM" "queue")}"
-WALLTIME="${OVERRIDE_WALLTIME:-$(get_config "$PLATFORM" "walltime" "1:00:00")}"
+WALLTIME="${OVERRIDE_WALLTIME:-$(get_config "$PLATFORM" "walltime" "12:00:00")}"
 GPU_SUPPORT=$(get_config "$PLATFORM" "gpu_support" "false")
 GPUS_PER_TASK=$(get_config "$PLATFORM" "gpus_per_task" "1")
 ACCOUNT=$(get_config "$PLATFORM" "account")
