@@ -10,6 +10,9 @@ visitlog.py
 .job*
 .run*
 .test*
+.regtest*
 .ref*
 .profile*
+.failed_tests
+tmp
 
