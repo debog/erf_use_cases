@@ -169,6 +169,12 @@ validate() {
         error "Unknown platform: $PLATFORM
        Use --list-platforms to see available platforms."
     fi
+
+    # Check if this is the big case on Matrix (not supported)
+    if [[ "$CASE" == "sdm_bimodal_amsu_big" && "$PLATFORM" == "matrix" ]]; then
+        error "The sdm_bimodal_amsu_big case cannot run on Matrix due to resource constraints.
+       Please use Dane or Tuolumne for this case."
+    fi
 }
 
 # =============================================================================
@@ -424,6 +430,26 @@ WALLTIME="${OVERRIDE_WALLTIME:-$(get_config "$PLATFORM" "walltime" "12:00:00")}"
 GPU_SUPPORT=$(get_config "$PLATFORM" "gpu_support" "false")
 GPUS_PER_TASK=$(get_config "$PLATFORM" "gpus_per_task" "1")
 ACCOUNT=$(get_config "$PLATFORM" "account")
+
+# Override configuration for sdm_bimodal_amsu_big case
+if [[ "$CASE" == "sdm_bimodal_amsu_big" ]]; then
+    if [[ "$PLATFORM" == "dane" ]]; then
+        # 64 nodes with 112 MPI ranks per node = 7168 tasks
+        NNODES="64"
+        NTASKS="7168"
+        info "Using large configuration for $CASE on $PLATFORM: $NTASKS tasks on $NNODES nodes"
+    elif [[ "$PLATFORM" == "tuolumne" ]]; then
+        # 64 nodes with 4 GPUs per node = 256 GPUs (tasks)
+        NNODES="64"
+        NTASKS="256"
+        info "Using large configuration for $CASE on $PLATFORM: $NTASKS tasks on $NNODES nodes"
+    fi
+    # Extended walltime for the big case
+    WALLTIME="24:00:00"
+    if [[ "$PLATFORM" == "tuolumne" ]]; then
+        WALLTIME="24h"  # Flux uses a different format
+    fi
+fi
 
 debug "Platform config loaded:"
 debug "  scheduler=$SCHEDULER ntasks=$NTASKS nnodes=$NNODES"
