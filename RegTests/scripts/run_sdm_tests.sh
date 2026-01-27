@@ -76,6 +76,7 @@ usage() {
 # =============================================================================
 # SDM test tolerances: TEST_NAME -> "RTOL ATOL PLTFILE"
 declare -A SDM_TEST_CONFIG=(
+    # From CTestList.cmake (lines 217-236)
     ["SDM_Bubble2D_Adv"]="1e-12 1e-12 plt00050"
     ["SDM_Bubble2D_Adv_wInjection"]="5e-12 5e-12 plt00050"
     ["SDM_Bubble2D_Adv_InitSampling"]="1e-14 1e-14 plt00000"
@@ -89,6 +90,7 @@ declare -A SDM_TEST_CONFIG=(
     ["SDM_RICO3D"]="5e-13 5e-13 plt00010"
     ["SDM_RICO3D_InitSampling"]="1e-14 2e-13 plt00000"
     ["SDM_MultiSpecies_Bubble2D"]="5e-12 1e-12 plt00001"
+    ["SDM_SineMassFlux"]="1e-14 1e-14 plt00050"
 )
 
 # Executable mapping (pattern -> relative path from ERF_BUILD)
@@ -96,6 +98,7 @@ declare -A EXEC_MAP=(
     ["RICO"]="Exec/DevTests/RICO"
     ["MultiSpecies"]="Exec/DevTests/MultiSpeciesBubble"
     ["Congestus"]="Exec/DevTests/TemperatureSourceSpatial"
+    ["SineMassFlux"]="Exec/DevTests/sinusoidal_mass_flux"
 )
 DEFAULT_EXEC_PATH="Exec/MoistRegTests/Bubble"
 
@@ -104,6 +107,7 @@ declare -A INPUT_SOUNDING_MAP=(
     ["SDM_Congestus3D"]="input_sounding"
     ["SDM_RICO3D"]="input_sounding"
     ["SDM_RICO3D_InitSampling"]="input_sounding"
+    ["SDM_SineMassFlux"]="input_sounding"
 )
 
 # =============================================================================
@@ -281,7 +285,7 @@ list_tests() {
 run_single_test() {
     local test_name="$1"
     local test_dir="$ERF_HOME/Tests/test_files/$test_name"
-    local work_dir="$PWD/.test_${PLATFORM}.${test_name}"
+    local work_dir="$PWD/.regtest_${PLATFORM}.${test_name}"
 
     # Get test configuration
     local config="${SDM_TEST_CONFIG[$test_name]:-}"
@@ -475,7 +479,7 @@ run_tests() {
                 failed_tests+=("$test_name")
                 # Show output on failure if requested
                 if [[ -n "$OUTPUT_ON_FAILURE" ]]; then
-                    local log_file="$PWD/.test_${PLATFORM}.${test_name}/${test_name}.log"
+                    local log_file="$PWD/.regtest_${PLATFORM}.${test_name}/${test_name}.log"
                     if [[ -f "$log_file" ]]; then
                         echo ""
                         echo -e "${CYAN}--- Output of $test_name ---${NC}"
@@ -505,7 +509,7 @@ run_tests() {
     # Save failed tests for --rerun-failed
     if [[ ${#failed_tests[@]} -gt 0 ]]; then
         printf '%s\n' "${failed_tests[@]}" > "$FAILED_TESTS_FILE"
-        echo -e "${RED}Some tests failed. Check .test_* directories for logs.${NC}"
+        echo -e "${RED}Some tests failed. Check .regtest_* directories for logs.${NC}"
         echo "Use --rerun-failed to rerun only the failed tests."
         return 1
     else
