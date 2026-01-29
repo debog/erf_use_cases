@@ -445,9 +445,9 @@ if [[ "$CASE" == "sdm_bimodal_amsu_big" ]]; then
         info "Using large configuration for $CASE on $PLATFORM: $NTASKS tasks on $NNODES nodes"
     fi
     # Extended walltime for the big case
-    WALLTIME="24:00:00"
+    WALLTIME="6:00:00"
     if [[ "$PLATFORM" == "tuolumne" ]]; then
-        WALLTIME="24h"  # Flux uses a different format
+        WALLTIME="6h"  # Flux uses a different format
     fi
 fi
 
