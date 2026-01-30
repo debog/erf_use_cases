@@ -1,0 +1,6 @@
+# Initial particle size distribution
+# Case: mass_constant
+# Column 1: Radius (μm)
+# Column 2: Number concentration (cm^-3)
+#
+2.224081e-02  1.310720e-01

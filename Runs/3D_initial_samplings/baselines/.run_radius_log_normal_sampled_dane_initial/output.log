@@ -1,0 +1,245 @@
+Initializing AMReX (25.12-26-g53dc0a470c5d)...
+MPI initialized with 4 MPI processes
+MPI initialized with thread support level 0
+AMReX (25.12-26-g53dc0a470c5d) initialized
+Successfully read inputs file ... 
+
+ERF git hash: 26.01-944-gc622469bbba3
+AMReX git hash: 25.12-26-g53dc0a470c5d
+
+Problem name (from inputs file) is Unknown
+Thermal stratification based on gradient of potential temperature
+Null land surface model!
+SOLVER CHOICE: 
+At level 0 : 
+   compressible with no substepping
+vert_implicit_fac           : 0 0 0
+use_coriolis                : 0
+use_gravity                 : 0
+Moisture Model: None
+Terrain Type: None
+Buildings Type: None
+   Mesh Type: ConstantDz
+ABL Driver Type: 
+    None
+Radiation Model: None
+Gradp_type                  : 0
+Buoyancy_type at level 0 : 2
+Advection Choices: 
+    dycore_horiz_adv_type   : Upwind_3rd
+    dycore_vert_adv_type    : Upwind_3rd
+   dryscal_horiz_adv_type   : Upwind_3rd
+   dryscal_vert_adv_type    : Upwind_3rd
+ moistscal_horiz_adv_type   : WENO3
+ moistscal_vert_adv_type    : WENO3
+Diffusion choices: 
+    rho0_trans              : 1
+    alpha_T                 : 0
+    alpha_C                 : 0
+    dynamic_viscosity       : 0
+Not using any molecular diffusivity, i.e. using the modeled turbulent diffusivity
+Sponge choices: 
+Rayleigh damping            : None
+w damping                   : 0 (coeff = -1 * dz/dt**2)
+Turbulence Settings at level 0
+    Using DNS model at level 0
+Super-Droplets moisture model!
+Creating new distribution map on level: 0
+BA FROM SCRATCH AT LEVEL 0 (BoxArray maxbox(4)
+       m_ref->m_hash_sig(0)
+       ((0,0,0) (1,1,3) (0,0,0)) ((2,0,0) (3,1,3) (0,0,0)) ((0,2,0) (1,3,3) (0,0,0)) ((2,2,0) (3,3,3) (0,0,0)) )
+
+max of zphys_nd 100
+max of zlevels  100
+Initializing uniform fields rho=1 theta=300
+Bubble delta T = -15 K
+  centered at (0 0 0)
+  with extent (0 0 0)
+SuperDropletPC(super_droplets_moisture): added 1 int-type attribute(s).
+SuperDropletPC(super_droplets_moisture): added 12 real-type attribute(s).
+SuperDropletsMoist:
+    diagnostics_interval: 1
+    include cold processes: true
+    cloud/rain radius: 4e-05 [m]
+    kinematic mode: false
+    dimensionality: three_d
+    include phase change: false
+    include particle advection: false
+    include coalescence: false
+    Recycle particles: false
+    number of substeps (phase change): 1
+    initial phase change relaxation: false
+SuperDropletPC(super_droplets_moisture):
+  Density scaling: false
+  Nucleate particles: false
+  Inactive particles threshold: 0.01
+  Recycling bounding box: [0, 100]  x [0, 100]  x [0, 100]
+  Advect with flow: true
+  Advect with gravity: true
+  Prescribed advection: false
+  Random initial placement: true
+  Coalescence bin size: (4,4,4)
+  Include Brownian coaslescence: false
+  Coalescence kernel: sedimentation
+  Mass change time integrator: backward_euler (cfl = 1000)
+    Terminal velocity model(s): CloudRainShima (water), IceBohm (ice)
+  SuperDropletPC(super_droplets_moisture) Initialization:
+    Initial number density: 1000000000
+    Initial super-droplets number density: -1
+    Particle box: (RealBox 0 100 0 100 0 100 )
+    Multiplicity type: sampled
+    Particles per cell: 2048
+    Vapour/Condensate Species material:
+        H2O (distribution: mass_constant, value=4.1887902e-42)
+        ice (distribution: mass_constant, value=0)
+    Aerosols material:
+        NaCl (distribution: radius_log_normal, min=1e-09, max=1e-06, mean=5e-08, std=2)
+    Number of physical particles per cell: 1.5625e+13
+    Number of super droplets per cell: 2048
+    Adding particles in box with volume 1000000.
+  Particle container size: 131072
+  Total number of superdroplets per cell: 2048
+Initialized 131072 super-droplets representing 1e+15 particles in super-droplets moisture model.
+Based on cfl of 1.0 
+Compressible dt at level 0 would be:  0.07639693597
+Anelastic dt at level 0 would be undefined 
+Fixed dt at level 0       is:  0.05
+SuperDropletPC(super_droplets_moisture) attributes (min, max, avg):
+    mass [kg]: 9.090372387e-24, 9.087731926e-15, 9.744375909e-18
+    radius [m]: 1.294685712e-09, 1.294560345e-06, 8.245398745e-08
+    multiplicity: 3489, 3.294943017e+10, 7629394531
+    velocity components [m/s]:
+        x: 0, 0, 0
+        y: 0, 0, 0
+        z: 0, 0, 0
+    terminal velocity [m/s]: 0, 0, 0
+    species masses [kg]:
+        H2O: 4.1887902e-42, 4.1887902e-42, 4.1887902e-42
+        ice: 0, 0, 0
+    aerosol masses [kg]:
+        NaCl: 9.090372387e-24, 9.087731926e-15, 9.744375909e-18
+    freezing temperature [K]: 235.15, 235.15, 235.15
+    eq. radius [m]: 0, 0, 0
+    polar. radius [m]: 0, 0, 0
+    apparent ice density [kg/m^3]: 0, 0, 0
+    rime mass [kg]: 0, 0, 0
+    num. primary crystals: 0, 0, 0
+Writing super_droplets_moisture_g_lnR_00000.txt
+ParticleData: the following additional Eulerian variables are available to plot:
+    super_droplets_moisture_mass_flux_x
+    super_droplets_moisture_mass_flux_y
+    super_droplets_moisture_mass_flux_z
+    super_droplets_moisture_number_density
+    super_droplets_moisture_sd_number_density
+    super_droplets_moisture_mass_density
+    super_droplets_moisture_radius
+    super_droplets_moisture_mass_density_H2O
+    super_droplets_moisture_mass_flux_x_H2O
+    super_droplets_moisture_mass_flux_y_H2O
+    super_droplets_moisture_mass_flux_z_H2O
+    super_droplets_moisture_aerosol_mass_density_NaCl
+    super_droplets_moisture_aerosol_mass_flux_x_NaCl
+    super_droplets_moisture_aerosol_mass_flux_y_NaCl
+    super_droplets_moisture_aerosol_mass_flux_z_NaCl
+    super_droplets_moisture_species_mass_density_H2O
+    super_droplets_moisture_species_mass_flux_x_H2O
+    super_droplets_moisture_species_mass_flux_y_H2O
+    super_droplets_moisture_species_mass_flux_z_H2O
+    super_droplets_moisture_species_mass_density_ice
+    super_droplets_moisture_species_mass_flux_x_ice
+    super_droplets_moisture_species_mass_flux_y_ice
+    super_droplets_moisture_species_mass_flux_z_ice
+SuperDroplets: the following additional variables are available to plot:
+    accum_NaCl
+Writing native 3D plotfile plt00000
+3DPlotfile write time = 0.56570142 seconds.
+
+TIME= 0             
+ MASS       = 1060620.201
+ RHO THETA  = 300000000
+ RHO SCALAR = 0
+ RHO QTOTAL = 4.1887902e-27
+
+Total Time: 1.102901624
+
+
+TinyProfiler total time across processes [min...avg...max]: 1.104 ... 1.104 ... 1.104
+
+-----------------------------------------------------------------------------------------------
+Name                                            NCalls  Excl. Min  Excl. Avg  Excl. Max   Max %
+-----------------------------------------------------------------------------------------------
+WriteBinaryParticleData()                            1     0.5364      0.539     0.5415  49.07%
+SuperDropletPC::ComputeDistributions()               1     0.5047     0.5059     0.5093  46.15%
+VisMF::Write(FabArray)                               1   0.005525   0.007729    0.01267   1.15%
+ERF::InitData()                                      1   0.007963   0.009162    0.01028   0.93%
+SuperDropletPC::addParticles                         1   0.009138   0.009175   0.009209   0.83%
+WriteMultiLevelPlotfile()                            1   0.000821   0.005144   0.008762   0.79%
+main()                                               1   0.008209   0.008239   0.008261   0.75%
+ParticleContainer::WriteParticles()                  1   0.005202   0.005456   0.006051   0.55%
+UtilCreateCleanDirectory()                           2   4.26e-07   0.001166   0.004662   0.42%
+FillBoundary_finish()                               63  0.0007633   0.003483    0.00447   0.41%
+amrex::ParticleToMesh                                5   0.003117   0.003141   0.003167   0.29%
+SuperDropletPC::Diagnostics()                        1   0.002204    0.00221   0.002216   0.20%
+SuperDropletPC::InitializeParticles()                1  0.0004565   0.000488  0.0005269   0.05%
+SuperDropletsMoist::InitParticles()                  1  3.623e-05  3.743e-05  3.812e-05   0.00%
+FabArray::FillBoundary()                            55  1.661e-05  2.104e-05  2.471e-05   0.00%
+FillPatchSingleLevel                                 8  5.428e-06   6.38e-06  6.867e-06   0.00%
+ParticleData::writePlotFile                          1  3.883e-06    4.7e-06  6.469e-06   0.00%
+ERF::FillPatchCrseLevel()                            2  4.499e-06  4.774e-06  4.962e-06   0.00%
+SuperDropletsMoist::FinishInit()                     1  2.207e-06  2.734e-06  3.117e-06   0.00%
+SuperDropletsMoist::computeQiQgQsWater()             1  1.576e-06  1.606e-06  1.633e-06   0.00%
+SuperDropletPC::iceCategoryDensity()                 3  1.118e-06  1.164e-06  1.257e-06   0.00%
+Other                                              368   0.001832   0.002638   0.003065   0.28%
+-----------------------------------------------------------------------------------------------
+
+-----------------------------------------------------------------------------------------------
+Name                                            NCalls  Incl. Min  Incl. Avg  Incl. Max   Max %
+-----------------------------------------------------------------------------------------------
+main()                                               1      1.103      1.103      1.103  99.94%
+ERF::InitData()                                      1      1.095      1.095      1.095  99.19%
+ParticleData::writePlotFile                          1     0.5416     0.5445     0.5476  49.61%
+WriteBinaryParticleData()                            1     0.5416     0.5445     0.5476  49.61%
+SuperDropletsMoist::FinishInit()                     1     0.5104     0.5116      0.515  46.67%
+SuperDropletPC::Diagnostics()                        1      0.507     0.5081     0.5116  46.35%
+SuperDropletPC::ComputeDistributions()               1     0.5047     0.5059     0.5093  46.15%
+WriteMultiLevelPlotfile()                            1    0.01103    0.01404    0.01816   1.65%
+VisMF::Write(FabArray)                               1   0.005525   0.007729    0.01267   1.15%
+SuperDropletsMoist::InitParticles()                  1   0.009771    0.00978   0.009783   0.89%
+SuperDropletPC::InitializeParticles()                1   0.009658   0.009665   0.009668   0.88%
+SuperDropletPC::addParticles                         1    0.00914   0.009177    0.00921   0.83%
+ParticleContainer::WriteParticles()                  1   0.005202   0.005456   0.006051   0.55%
+FabArray::FillBoundary()                            55   0.001559   0.004345   0.005327   0.48%
+UtilCreateCleanDirectory()                           2   4.26e-07   0.001166   0.004662   0.42%
+FillBoundary_finish()                               63  0.0007633   0.003483    0.00447   0.41%
+ERF::FillPatchCrseLevel()                            2  0.0003985   0.003218   0.004195   0.38%
+FillPatchSingleLevel                                 8  0.0002125   0.003026   0.004001   0.36%
+amrex::ParticleToMesh                                5   0.003323   0.003328   0.003337   0.30%
+SuperDropletsMoist::computeQiQgQsWater()             1   0.001989   0.001994   0.001997   0.18%
+SuperDropletPC::iceCategoryDensity()                 3   0.001936   0.001942    0.00195   0.18%
+Other                                              368   0.008839     0.0098    0.01037   0.94%
+-----------------------------------------------------------------------------------------------
+
+Unused ParmParse Variables:
+  [TOP]::erf.use_rayleigh_damping(nvals = 1)  :: [false]
+
+Pinned Memory Usage:
+--------------------------------------------------------------------------------------------------------------
+Name                            Nalloc  AvgMem min  AvgMem avg  AvgMem max  MaxMem min  MaxMem avg  MaxMem max
+--------------------------------------------------------------------------------------------------------------
+The_Pinned_Arena::Initialize()       4      13   B      13   B      14   B    8192 KiB    8192 KiB    8192 KiB
+--------------------------------------------------------------------------------------------------------------
+
+Cpu Memory Usage:
+------------------------------------------------------------------------------------------------------------
+Name                          Nalloc  AvgMem min  AvgMem avg  AvgMem max  MaxMem min  MaxMem avg  MaxMem max
+------------------------------------------------------------------------------------------------------------
+ERF::InitData()                  224     306 KiB     306 KiB     306 KiB     369 KiB     369 KiB     369 KiB
+SuperDropletsMoist::Init()        72      88 KiB      88 KiB      88 KiB      90 KiB      90 KiB      90 KiB
+FillBoundary_nowait()           1008      26   B     220   B     288   B      75 KiB      75 KiB      75 KiB
+amrex::ParticleToMesh             20      14   B      14   B      14   B    5120   B    5120   B    5120   B
+ERF::estTimeStep()                 4       0   B       0   B       0   B     384   B     384   B     384   B
+ERF::volWgtSumMF()                72       0   B       0   B       0   B     128   B     128   B     128   B
+SuperDropletPC::addParticles       8       1   B       1   B       1   B     128   B     128   B     128   B
+------------------------------------------------------------------------------------------------------------
+
+AMReX (25.12-26-g53dc0a470c5d) finalized

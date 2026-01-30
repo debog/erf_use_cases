@@ -63,7 +63,6 @@ def compute_distribution(run_dir):
     sd_attribs = pltutils.get_particle_field_names(plt_file)
 
     print(f"Reading particle data from: {plt_file}")
-    print(f"Available particle fields: {sd_attribs}")
 
     # Read particle data
     _, cgp, _ = pltutils.read_plt_particles(plt_file, pcname, sd_attribs)
@@ -78,6 +77,17 @@ def compute_distribution(run_dir):
     print(f"Number of super-droplets: {len(r_o)}")
     print(f"Radius range: {r_o.min():.3e} - {r_o.max():.3e} m")
     print(f"Radius range: {r_o.min()*1e6:.3e} - {r_o.max()*1e6:.3e} μm")
+
+    # Check if all particles have the same radius (constant mass case)
+    r_std = np.std(r_o)
+    if r_std < 1e-20 or r_o.max() == r_o.min():
+        print("Warning: All particles have the same radius (constant mass case)")
+        # For constant mass, return a single point
+        r_single = r_o.mean()
+        # Total number concentration = sum of all multiplicities / volume
+        # For plotting purposes, we'll return the single radius and total concentration
+        n_total = np.sum(mult)
+        return np.array([r_single]), np.array([n_total])
 
     # Create radius bins (from minimum to maximum particle radius)
     r_range = np.geomspace(r_o.min(), r_o.max(), 30)  # meters
@@ -114,33 +124,59 @@ def plot_distribution(run_dir, output_file=None, case_name=None):
     # Create the plot
     _, ax = plt.subplots(figsize=(SIZE_1, SIZE_2))
 
-    # Plot the data (convert radius to μm, concentration to cm^-3)
-    radius_um = 1e6 * r_range[:-1]
-    n_conc_cm3 = 1e-6 * n_mult[:-1]
+    # Check if this is a constant mass case (single radius)
+    if len(r_range) == 1:
+        # Single radius case - plot as a scatter point
+        radius_um = 1e6 * r_range[0]
+        n_conc_cm3 = 1e-6 * n_mult[0]
 
-    ax.plot(radius_um, n_conc_cm3, '--o',
-            linewidth=2, markersize=MS_SIZE, color='blue')
+        ax.scatter([radius_um], [n_conc_cm3], s=100, color='blue', marker='o', zorder=5)
 
-    # Set up axes
-    ax.set_xscale('log')
-    ax.set_yscale('log')
-    ax.set_xlabel(r'Radius ($\mu$m)', fontsize=FS)
-    ax.set_ylabel(r'Number concentration ($cm^{-3}$)', fontsize=FS)
-    ax.tick_params(labelsize=FS_TICK)
-    ax.grid(True, linestyle=':', alpha=0.7)
+        # Set up axes with reasonable ranges around the single point
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel(r'Radius ($\mu$m)', fontsize=FS)
+        ax.set_ylabel(r'Number concentration ($cm^{-3}$)', fontsize=FS)
+        ax.tick_params(labelsize=FS_TICK)
+        ax.grid(True, linestyle=':', alpha=0.7)
 
-    # Set axis limits based on data range
-    # Filter out non-positive values for log scale
-    radius_positive = radius_um[radius_um > 0]
-    n_conc_positive = n_conc_cm3[n_conc_cm3 > 0]
+        # Set axis limits around the single point
+        ax.set_xlim([radius_um * 0.5, radius_um * 2.0])
+        ax.set_ylim([n_conc_cm3 * 0.1, n_conc_cm3 * 10.0])
 
-    if len(radius_positive) > 0:
-        r_min, r_max = radius_positive.min(), radius_positive.max()
-        ax.set_xlim([r_min * 0.5, r_max * 2.0])
+        # Add text annotation
+        ax.text(radius_um * 1.1, n_conc_cm3,
+                f'All particles at R={radius_um:.3e} μm',
+                fontsize=12, verticalalignment='center')
+    else:
+        # Multiple radii - plot as line
+        # Plot the data (convert radius to μm, concentration to cm^-3)
+        radius_um = 1e6 * r_range[:-1]
+        n_conc_cm3 = 1e-6 * n_mult[:-1]
 
-    if len(n_conc_positive) > 0:
-        n_min, n_max = n_conc_positive.min(), n_conc_positive.max()
-        ax.set_ylim([n_min * 0.1, n_max * 10.0])
+        ax.plot(radius_um, n_conc_cm3, '--o',
+                linewidth=2, markersize=MS_SIZE, color='blue')
+
+        # Set up axes
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel(r'Radius ($\mu$m)', fontsize=FS)
+        ax.set_ylabel(r'Number concentration ($cm^{-3}$)', fontsize=FS)
+        ax.tick_params(labelsize=FS_TICK)
+        ax.grid(True, linestyle=':', alpha=0.7)
+
+        # Set axis limits based on data range
+        # Filter out non-positive values for log scale
+        radius_positive = radius_um[radius_um > 0]
+        n_conc_positive = n_conc_cm3[n_conc_cm3 > 0]
+
+        if len(radius_positive) > 0:
+            r_min, r_max = radius_positive.min(), radius_positive.max()
+            ax.set_xlim([r_min * 0.5, r_max * 2.0])
+
+        if len(n_conc_positive) > 0:
+            n_min, n_max = n_conc_positive.min(), n_conc_positive.max()
+            ax.set_ylim([n_min * 0.1, n_max * 10.0])
 
     # Set title
     if case_name:
@@ -159,7 +195,27 @@ def plot_distribution(run_dir, output_file=None, case_name=None):
     plt.savefig(output_file, dpi=150, bbox_inches='tight')
     plt.close()
 
-    print("Plot created successfully!")
+    # Save distribution data to text file in run directory
+    data_file = os.path.join(run_dir, "initial_distribution.txt")
+    print(f"Saving distribution data to: {data_file}")
+
+    with open(data_file, 'w') as f:
+        f.write("# Initial particle size distribution\n")
+        if case_name:
+            f.write(f"# Case: {case_name}\n")
+        f.write("# Column 1: Radius (μm)\n")
+        f.write("# Column 2: Number concentration (cm^-3)\n")
+        f.write("#\n")
+
+        if len(r_range) == 1:
+            # Single radius case
+            f.write(f"{1e6 * r_range[0]:.6e}  {1e-6 * n_mult[0]:.6e}\n")
+        else:
+            # Multiple radii case
+            for i in range(len(r_range)-1):
+                f.write(f"{1e6 * r_range[i]:.6e}  {1e-6 * n_mult[i]:.6e}\n")
+
+    print("Plot and data files created successfully!")
 
 def main():
     parser = argparse.ArgumentParser(

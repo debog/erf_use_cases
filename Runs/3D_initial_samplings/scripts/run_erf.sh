@@ -7,11 +7,25 @@
 #   ./run_erf.sh [OPTIONS]
 #
 # Options:
-#   -c, --case=NAME       Case name (default: mass_exp_constant_mult)
+#   -c, --case=NAME       Case name (default: mass_exponential)
 #   -p, --platform=NAME   Platform to run on (default: auto-detect from LCHOST)
+#   -a, --all             Run all available cases
 #   -l, --list            List all available cases
 #   -d, --dry-run         Show what would be created without creating
 #   -h, --help            Show this help message
+#
+# Examples:
+#   # List all available cases
+#   ./run_erf.sh -l
+#
+#   # Run a specific case
+#   ./run_erf.sh -c mass_exponential -p matrix
+#
+#   # Run all cases on a platform
+#   ./run_erf.sh -a -p matrix
+#
+#   # Dry run to see what would be created
+#   ./run_erf.sh -c mass_exponential -p matrix -d
 #
 # Environment:
 #   LCHOST            Platform identifier (auto-detected, or 'desktop' if unset)
@@ -26,7 +40,18 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 CONFIG_FILE="$SCRIPT_DIR/platforms.conf"
-DEFAULT_CASE="mass_exp_constant_mult"
+DEFAULT_CASE="mass_exponential"
+
+# All available cases
+ALL_CASES=(
+    "mass_constant"
+    "mass_exponential"
+    "radius_log_normal"
+    "mass_constant_sampled"
+    "mass_exponential_sampled"
+    "radius_log_normal_sampled"
+    "radius_lognormal_autorange_sampled"
+)
 
 # Colors
 if [[ -t 1 ]]; then
@@ -90,7 +115,18 @@ platform_exists() {
 list_cases() {
     echo "Available cases for initial sampling (max_step = 0):"
     echo
-    echo "  mass_exp_constant_mult    # Exponential mass distribution, constant multiplicity, 2048 ppc"
+    echo "Constant multiplicity (3 cases):"
+    echo "  mass_constant                     # Constant aerosol mass"
+    echo "  mass_exponential                  # Exponential mass distribution (default)"
+    echo "  radius_log_normal                 # Log-normal radius with bounds"
+    echo
+    echo "Sampled multiplicity (4 cases):"
+    echo "  mass_constant_sampled             # Constant aerosol mass, sampled multiplicity"
+    echo "  mass_exponential_sampled          # Exponential mass, sampled multiplicity"
+    echo "  radius_log_normal_sampled         # Log-normal radius with bounds, sampled mult"
+    echo "  radius_lognormal_autorange_sampled # Log-normal radius auto-range, sampled mult"
+    echo
+    echo "Note: radius_lognormal_autorange only works with sampled multiplicity"
     echo
     exit 0
 }
@@ -98,9 +134,15 @@ list_cases() {
 # =============================================================================
 # Parse arguments
 # =============================================================================
+# Show help if no arguments provided
+if [[ $# -eq 0 ]]; then
+    usage
+fi
+
 CASE="$DEFAULT_CASE"
 PLATFORM="${LCHOST:-desktop}"
 DRY_RUN=""
+RUN_ALL=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -108,6 +150,7 @@ while [[ $# -gt 0 ]]; do
             [[ "$1" == -c ]] && { shift; CASE="$1"; } || CASE="${1#*=}" ;;
         -p|--platform=*)
             [[ "$1" == -p ]] && { shift; PLATFORM="$1"; } || PLATFORM="${1#*=}" ;;
+        -a|--all)       RUN_ALL=1 ;;
         -l|--list)      list_cases ;;
         -d|--dry-run)   DRY_RUN=1 ;;
         -h|--help)      usage ;;
@@ -115,6 +158,48 @@ while [[ $# -gt 0 ]]; do
     esac
     shift
 done
+
+# =============================================================================
+# Handle --all flag
+# =============================================================================
+if [[ -n "$RUN_ALL" ]]; then
+    info "Running all 7 cases on platform: $PLATFORM"
+    echo
+
+    FAILED_CASES=()
+    for case_name in "${ALL_CASES[@]}"; do
+        info "======================================================================"
+        info "Running case: $case_name"
+        info "======================================================================"
+
+        # Build the command with appropriate flags
+        CMD=("$0" "-c" "$case_name" "-p" "$PLATFORM")
+        [[ -n "$DRY_RUN" ]] && CMD+=("-d")
+
+        # Run the case
+        if "${CMD[@]}"; then
+            info "Successfully completed: $case_name"
+        else
+            warn "Failed to complete: $case_name"
+            FAILED_CASES+=("$case_name")
+        fi
+        echo
+    done
+
+    # Report summary
+    info "======================================================================"
+    info "All cases completed"
+    info "======================================================================"
+    info "Total cases: ${#ALL_CASES[@]}"
+    info "Successful: $((${#ALL_CASES[@]} - ${#FAILED_CASES[@]}))"
+    if [[ ${#FAILED_CASES[@]} -gt 0 ]]; then
+        warn "Failed (${#FAILED_CASES[@]}): ${FAILED_CASES[*]}"
+        exit 1
+    else
+        info "All cases ran successfully!"
+    fi
+    exit 0
+fi
 
 # =============================================================================
 # Validate environment
@@ -169,19 +254,6 @@ if [[ -z "$DRY_RUN" ]]; then
     # Check if base template exists
     if [[ ! -f "$TEMPLATES_DIR/base.inputs" ]]; then
         error "Base template not found: $TEMPLATES_DIR/base.inputs"
-    fi
-
-    # Create sampling options override file if it doesn't exist
-    if [[ ! -f "$OVERRIDES_DIR/sampling_matrix.conf" ]]; then
-        info "Creating sampling options override file"
-        cat > "$OVERRIDES_DIR/sampling_matrix.conf" << 'EOF'
-# Override: Sampling options (last 4 lines)
-# These parameters define the aerosol distribution and will vary between cases
-
-super_droplets_moisture.initial_aerosol_distribution_type_NaCl = "mass_exponential"
-super_droplets_moisture.initial_aerosol_mean_mass_NaCl = 1.0e-19 #kg
-super_droplets_moisture.initial_aerosol_min_mass_NaCl = 1.0e-22 #kg
-EOF
     fi
 fi
 
@@ -245,7 +317,13 @@ merge_inputs() {
 # Determine override files for the case
 # =============================================================================
 BASE_TEMPLATE="$TEMPLATES_DIR/base.inputs"
-SAMPLING_OPTIONS_OVERRIDE="$OVERRIDES_DIR/sampling_matrix.conf"
+SAMPLING_OPTIONS_OVERRIDE="$OVERRIDES_DIR/${CASE}.conf"
+
+# Validate that the case override file exists
+if [[ ! -f "$SAMPLING_OPTIONS_OVERRIDE" ]]; then
+    error "Case override file not found: $SAMPLING_OPTIONS_OVERRIDE
+       Use './run_erf.sh -l' to list all available cases"
+fi
 
 # =============================================================================
 # Create run directory and files

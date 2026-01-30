@@ -6,32 +6,44 @@
 #   ./plot.sh [OPTIONS]
 #
 # Options:
-#   -c, --case=NAME       Case name (default: mass_exp_constant_mult)
+#   -c, --case=NAME       Case name (default: mass_exponential)
 #   -p, --platform=NAME   Platform to plot from (default: auto-detect from LCHOST)
+#   -a, --all             Plot all available cases
 #   -o, --output=FILE     Output file path (default: plots/<case>_<platform>.png)
 #   -t, --title=TEXT      Custom plot title (default: use case name)
 #   -l, --list            List all available run directories
 #   -h, --help            Show this help message
 #
 # Examples:
-#   # Plot from latest run matching default case
-#   ./plot.sh
-#
 #   # List all available run directories
 #   ./plot.sh -l
 #
 #   # Plot specific case and platform
-#   ./plot.sh -c mass_exp_constant_mult -p matrix
+#   ./plot.sh -c mass_exponential -p matrix
+#
+#   # Plot all cases for a platform
+#   ./plot.sh -a -p matrix
 #
 #   # Specify custom output file and title
-#   ./plot.sh -c mass_exp_constant_mult -o my_plot.png -t "Matrix Run"
+#   ./plot.sh -c mass_exponential -o my_plot.png -t "Matrix Run"
 #
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
-DEFAULT_CASE="mass_exp_constant_mult"
+DEFAULT_CASE="mass_exponential"
+
+# All available cases
+ALL_CASES=(
+    "mass_constant"
+    "mass_exponential"
+    "radius_log_normal"
+    "mass_constant_sampled"
+    "mass_exponential_sampled"
+    "radius_log_normal_sampled"
+    "radius_lognormal_autorange_sampled"
+)
 
 # Colors
 if [[ -t 1 ]]; then
@@ -82,10 +94,16 @@ list_runs() {
 }
 
 # Parse arguments
+# Show help if no arguments provided
+if [[ $# -eq 0 ]]; then
+    usage
+fi
+
 CASE="$DEFAULT_CASE"
 PLATFORM="${LCHOST:-}"
 OUTPUT_FILE=""
 PLOT_TITLE=""
+RUN_ALL=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -93,6 +111,7 @@ while [[ $# -gt 0 ]]; do
             [[ "$1" == -c ]] && { shift; CASE="$1"; } || CASE="${1#*=}" ;;
         -p|--platform=*)
             [[ "$1" == -p ]] && { shift; PLATFORM="$1"; } || PLATFORM="${1#*=}" ;;
+        -a|--all)       RUN_ALL=1 ;;
         -o|--output=*)
             [[ "$1" == -o ]] && { shift; OUTPUT_FILE="$1"; } || OUTPUT_FILE="${1#*=}" ;;
         -t|--title=*)
@@ -104,6 +123,56 @@ while [[ $# -gt 0 ]]; do
     esac
     shift
 done
+
+# Handle --all flag
+if [[ -n "$RUN_ALL" ]]; then
+    # Determine platform
+    if [[ -z "$PLATFORM" ]]; then
+        PLATFORM="${LCHOST:-}"
+        if [[ -z "$PLATFORM" ]]; then
+            error "Platform must be specified with -p when using --all"
+        fi
+    fi
+
+    info "Plotting all 7 cases for platform: $PLATFORM"
+    echo
+
+    FAILED_CASES=()
+    for case_name in "${ALL_CASES[@]}"; do
+        info "----------------------------------------------------------------------"
+        info "Plotting case: $case_name"
+        info "----------------------------------------------------------------------"
+
+        # Build the command with appropriate flags
+        CMD=("$0" "-c" "$case_name" "-p" "$PLATFORM")
+        [[ -n "$OUTPUT_FILE" ]] && CMD+=("-o" "$OUTPUT_FILE")
+        [[ -n "$PLOT_TITLE" ]] && CMD+=("-t" "$PLOT_TITLE")
+
+        # Run the plot
+        if "${CMD[@]}"; then
+            info "Successfully plotted: $case_name"
+        else
+            warn "Failed to plot: $case_name"
+            FAILED_CASES+=("$case_name")
+        fi
+        echo
+    done
+
+    # Report summary
+    info "======================================================================"
+    info "All plots completed"
+    info "======================================================================"
+    info "Total cases: ${#ALL_CASES[@]}"
+    info "Successful: $((${#ALL_CASES[@]} - ${#FAILED_CASES[@]}))"
+    if [[ ${#FAILED_CASES[@]} -gt 0 ]]; then
+        warn "Failed (${#FAILED_CASES[@]}): ${FAILED_CASES[*]}"
+        exit 1
+    else
+        info "All plots generated successfully!"
+        info "Output directory: $ROOT_DIR/plots"
+    fi
+    exit 0
+fi
 
 # Find the run directory based on case and platform
 if [[ -n "$PLATFORM" ]]; then
@@ -143,9 +212,11 @@ mkdir -p "$PLOTS_DIR"
 
 # Set default output file if not provided
 if [[ -z "$OUTPUT_FILE" ]]; then
-    # Extract platform from run directory name
+    # Extract platform from run directory name using the known case name
     RUN_BASENAME=$(basename "$RUN_DIR")
-    DETECTED_PLATFORM=$(echo "$RUN_BASENAME" | sed -E 's/^\.run_[^_]+_([^_]+)_initial$/\1/')
+    # Pattern: .run_${CASE}_${PLATFORM}_initial
+    # Remove the known prefix and suffix to get the platform
+    DETECTED_PLATFORM=$(echo "$RUN_BASENAME" | sed -E "s/^\.run_${CASE}_(.+)_initial$/\1/")
     OUTPUT_FILE="$PLOTS_DIR/${CASE}_${DETECTED_PLATFORM}.png"
 fi
 
