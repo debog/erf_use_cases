@@ -11,11 +11,11 @@
 #   -a, --all             Plot all available cases
 #   -o, --output=FILE     Output file path (default: plots/<case>_<platform>.png)
 #   -t, --title=TEXT      Custom plot title (default: use case name)
-#   -l, --list            List all available run directories
+#   -l, --list            List all available cases
 #   -h, --help            Show this help message
 #
 # Examples:
-#   # List all available run directories
+#   # List all available cases
 #   ./plot.sh -l
 #
 #   # Plot specific case and platform
@@ -61,34 +61,22 @@ usage() {
     exit 0
 }
 
-# List available run directories
-list_runs() {
-    echo "Available run directories:"
+# List all available cases
+list_cases() {
+    echo "Available cases for initial sampling (max_step = 0):"
     echo
-
-    # Find all .run_* directories
-    local run_dirs=($(find "$ROOT_DIR" -maxdepth 1 -type d -name ".run_*" -printf '%T@ %p\n' 2>/dev/null | sort -rn | cut -d' ' -f2-))
-
-    if [[ ${#run_dirs[@]} -eq 0 ]]; then
-        echo "  No run directories found"
-        echo
-        echo "Run a simulation first with:"
-        echo "  ./run_erf.sh"
-        exit 0
-    fi
-
-    for run_dir in "${run_dirs[@]}"; do
-        local basename=$(basename "$run_dir")
-        local mtime=$(stat -c '%y' "$run_dir" 2>/dev/null | cut -d' ' -f1,2 | cut -d'.' -f1)
-
-        # Check if data file exists
-        if [[ -f "$run_dir/super_droplets_moisture_g_lnR_00000.txt" ]]; then
-            echo "  $basename  (modified: $mtime)"
-        else
-            echo "  $basename  (modified: $mtime) [no data]"
-        fi
-    done
-
+    echo "Constant multiplicity (3 cases):"
+    echo "  mass_constant                     # Constant aerosol mass"
+    echo "  mass_exponential                  # Exponential mass distribution (default)"
+    echo "  radius_log_normal                 # Log-normal radius with bounds"
+    echo
+    echo "Sampled multiplicity (4 cases):"
+    echo "  mass_constant_sampled             # Constant aerosol mass, sampled multiplicity"
+    echo "  mass_exponential_sampled          # Exponential mass, sampled multiplicity"
+    echo "  radius_log_normal_sampled         # Log-normal radius with bounds, sampled mult"
+    echo "  radius_lognormal_autorange_sampled # Log-normal radius auto-range, sampled mult"
+    echo
+    echo "Note: radius_lognormal_autorange only works with sampled multiplicity"
     echo
     exit 0
 }
@@ -116,7 +104,7 @@ while [[ $# -gt 0 ]]; do
             [[ "$1" == -o ]] && { shift; OUTPUT_FILE="$1"; } || OUTPUT_FILE="${1#*=}" ;;
         -t|--title=*)
             [[ "$1" == -t ]] && { shift; PLOT_TITLE="$1"; } || PLOT_TITLE="${1#*=}" ;;
-        -l|--list)      list_runs ;;
+        -l|--list)      list_cases ;;
         -h|--help)      usage ;;
         -*)             error "Unknown option: $1" ;;
         *)              error "Unknown argument: $1" ;;

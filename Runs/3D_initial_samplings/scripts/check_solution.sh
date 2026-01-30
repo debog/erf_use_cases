@@ -161,6 +161,11 @@ if [[ -n "$RUN_ALL" ]]; then
     FAILED=0
     MISSING=0
 
+    # Arrays to store error values for table
+    declare -A MEAN_ERRORS
+    declare -A STD_ERRORS
+    declare -A STATUS
+
     for case_name in "${ALL_CASES[@]}"; do
         info "----------------------------------------------------------------------"
         info "Checking: $case_name on $PLATFORM"
@@ -171,6 +176,9 @@ if [[ -n "$RUN_ALL" ]]; then
             warn "Baseline not found: $BASELINE_RUN"
             MISSING=$((MISSING + 1))
             MISSING_CASES+=("${case_name}_${PLATFORM}")
+            STATUS["$case_name"]="MISSING"
+            MEAN_ERRORS["$case_name"]="N/A"
+            STD_ERRORS["$case_name"]="N/A"
             echo
             continue
         fi
@@ -181,28 +189,79 @@ if [[ -n "$RUN_ALL" ]]; then
             fail "Current run directory not found: $CURRENT_RUN"
             MISSING=$((MISSING + 1))
             MISSING_CASES+=("${case_name}_${PLATFORM}")
+            STATUS["$case_name"]="MISSING"
+            MEAN_ERRORS["$case_name"]="N/A"
+            STD_ERRORS["$case_name"]="N/A"
             echo
             continue
         fi
 
-        # Run comparison
+        # Run comparison and capture output
         OUTPUT_FILE="$COMPARE_DIR/${case_name}_${PLATFORM}_comparison.png"
 
-        if python3 "$SCRIPT_DIR/compare_distributions.py" \
+        # Temporarily disable exit-on-error to capture comparison results
+        set +e
+        COMPARE_OUTPUT=$(python3 "$SCRIPT_DIR/compare_distributions.py" \
             "$BASELINE_RUN" \
             "$CURRENT_RUN" \
             -o "$OUTPUT_FILE" \
-            -c "$case_name"; then
+            -c "$case_name" 2>&1)
+        COMPARE_EXIT=$?
+        set -e
 
+        # Display output
+        echo "$COMPARE_OUTPUT"
+
+        # Parse errors from output
+        MEAN_ERROR=$(echo "$COMPARE_OUTPUT" | grep "mean_radius:" | awk '{print $2}')
+        STD_ERROR=$(echo "$COMPARE_OUTPUT" | grep "std_radius:" | awk '{print $2}')
+
+        # Store results (use N/A if parsing failed)
+        MEAN_ERRORS["$case_name"]="${MEAN_ERROR:-N/A}"
+        STD_ERRORS["$case_name"]="${STD_ERROR:-N/A}"
+
+        if [[ $COMPARE_EXIT -eq 0 ]]; then
             pass "$case_name on $PLATFORM"
             PASSED=$((PASSED + 1))
+            STATUS["$case_name"]="PASS"
         else
             fail "$case_name on $PLATFORM"
             FAILED=$((FAILED + 1))
             FAILED_CASES+=("${case_name}_${PLATFORM}")
+            STATUS["$case_name"]="FAIL"
         fi
         echo
     done
+
+    # Print results table
+    info "======================================================================"
+    info "Results Summary"
+    info "======================================================================"
+    echo
+    printf "%-40s %-15s %-15s %-10s\n" "Case" "Mean Error" "Std Error" "Status"
+    printf "%-40s %-15s %-15s %-10s\n" "----" "----------" "---------" "------"
+
+    for case_name in "${ALL_CASES[@]}"; do
+        if [[ -n "${STATUS[$case_name]}" ]]; then
+            # Get values
+            MEAN_VAL="${MEAN_ERRORS[$case_name]}"
+            STD_VAL="${STD_ERRORS[$case_name]}"
+            STATUS_VAL="${STATUS[$case_name]}"
+
+            # Format status with color
+            if [[ "$STATUS_VAL" == "PASS" ]]; then
+                STATUS_STR="${GREEN}PASS${NC}"
+            elif [[ "$STATUS_VAL" == "FAIL" ]]; then
+                STATUS_STR="${RED}FAIL${NC}"
+            elif [[ "$STATUS_VAL" == "MISSING" ]]; then
+                STATUS_STR="${YELLOW}MISSING${NC}"
+            fi
+
+            # Print entire line at once
+            printf "%-40s %-15s %-15s %b\n" "$case_name" "$MEAN_VAL" "$STD_VAL" "$STATUS_STR"
+        fi
+    done
+    echo
 
     # Print summary
     info "======================================================================"
@@ -266,17 +325,51 @@ OUTPUT_FILE="$COMPARE_DIR/${CASE}_${PLATFORM}_comparison.png"
 info "Running comparison..."
 echo
 
-if python3 "$SCRIPT_DIR/compare_distributions.py" \
+# Temporarily disable exit-on-error to capture comparison results
+set +e
+COMPARE_OUTPUT=$(python3 "$SCRIPT_DIR/compare_distributions.py" \
     "$BASELINE_RUN" \
     "$CURRENT_RUN" \
     -o "$OUTPUT_FILE" \
-    -c "$CASE"; then
+    -c "$CASE" 2>&1)
+COMPARE_EXIT=$?
+set -e
 
-    echo
+# Display output
+echo "$COMPARE_OUTPUT"
+
+# Parse errors from output (use N/A if parsing failed)
+MEAN_ERROR=$(echo "$COMPARE_OUTPUT" | grep "mean_radius:" | awk '{print $2}')
+STD_ERROR=$(echo "$COMPARE_OUTPUT" | grep "std_radius:" | awk '{print $2}')
+MEAN_ERROR="${MEAN_ERROR:-N/A}"
+STD_ERROR="${STD_ERROR:-N/A}"
+
+echo
+if [[ $COMPARE_EXIT -eq 0 ]]; then
     pass "Comparison successful: $CASE on $PLATFORM"
-    info "Comparison plot saved to: $OUTPUT_FILE"
 else
-    echo
     fail "Comparison failed: $CASE on $PLATFORM"
+fi
+
+# Print results table
+echo
+info "======================================================================"
+info "Results"
+info "======================================================================"
+echo
+printf "%-40s %-15s %-15s %-10s\n" "Case" "Mean Error" "Std Error" "Status"
+printf "%-40s %-15s %-15s %-10s\n" "----" "----------" "---------" "------"
+
+if [[ $COMPARE_EXIT -eq 0 ]]; then
+    STATUS_STR="${GREEN}PASS${NC}"
+else
+    STATUS_STR="${RED}FAIL${NC}"
+fi
+printf "%-40s %-15s %-15s %b\n" "$CASE" "$MEAN_ERROR" "$STD_ERROR" "$STATUS_STR"
+echo
+
+info "Comparison plot saved to: $OUTPUT_FILE"
+
+if [[ $COMPARE_EXIT -ne 0 ]]; then
     exit 1
 fi
