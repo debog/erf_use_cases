@@ -15,4 +15,9 @@ visitlog.py
 .profile*
 .failed_tests
 tmp
+Runs/3D_coalescence_H2O_salt/plots/
+Runs/3D_initial_samplings/comparisons/
+Runs/3D_initial_samplings/plots/
+*.pyc
+
 
