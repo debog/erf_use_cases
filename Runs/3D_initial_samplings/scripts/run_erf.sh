@@ -394,9 +394,9 @@ DEBUG_QUEUE=$DEBUG_QUEUE
 if [[ "\$GPU_SUPPORT" == "true" ]]; then
     # Total GPUs = ntasks * gpus_per_task
     TOTAL_GPUS=\$((\$NTASKS * \$GPUS_PER_TASK))
-    srun -n \$NTASKS -N \$NNODES -p \$DEBUG_QUEUE -G \$TOTAL_GPUS \$EXEC \$INPUT 2>&1 | tee output.log
+    srun -n \$NTASKS -N \$NNODES -p \$DEBUG_QUEUE -t 2 -G \$TOTAL_GPUS \$EXEC \$INPUT 2>&1 | tee output.log
 else
-    srun -n \$NTASKS -N \$NNODES -p \$DEBUG_QUEUE \$EXEC \$INPUT 2>&1 | tee output.log
+    srun -n \$NTASKS -N \$NNODES -p \$DEBUG_QUEUE -t 2 \$EXEC \$INPUT 2>&1 | tee output.log
 fi
 EOF
     elif [[ "$SCHEDULER" == "flux" ]]; then
