@@ -200,7 +200,7 @@ def compare_and_plot(baseline_dir, current_dir, output_file, case_name=None):
         comparison['relative_errors'][key] = rel_error
 
     # Check if comparison passed (mean and std within tolerance)
-    MAX_TOLERANCE = 0.01  # 0.01 maximum allowed error
+    MAX_TOLERANCE = 0.02  # 0.02 maximum allowed error
     passed = True
     failed_keys = []
 

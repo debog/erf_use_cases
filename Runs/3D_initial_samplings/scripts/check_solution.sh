@@ -209,9 +209,6 @@ if [[ -n "$RUN_ALL" ]]; then
         COMPARE_EXIT=$?
         set -e
 
-        # Display output
-        echo "$COMPARE_OUTPUT"
-
         # Parse errors from output
         MEAN_ERROR=$(echo "$COMPARE_OUTPUT" | grep "mean_radius:" | awk '{print $2}')
         STD_ERROR=$(echo "$COMPARE_OUTPUT" | grep "std_radius:" | awk '{print $2}')
