@@ -193,7 +193,7 @@ validate() {
     fi
 
     # Check if override file exists for the case
-    if ! ls "$INPUTS_DIR/templates/overrides"/*${CASE}*.conf &> /dev/null; then
+    if [[ ! -f "$INPUTS_DIR/templates/overrides/${CASE}.conf" ]]; then
         error "No override file found for case: $CASE
        Use -l to see available cases."
     fi
@@ -655,7 +655,10 @@ mkdir -p "$WORKDIR"
 cd "$WORKDIR"
 
 # Copy input file directly to the run directory
-OVERRIDE_FILE=$(ls "$INPUTS_DIR/templates/overrides"/*${CASE}*.conf | head -1)
+OVERRIDE_FILE="$INPUTS_DIR/templates/overrides/${CASE}.conf"
+if [[ ! -f "$OVERRIDE_FILE" ]]; then
+    error "Override file not found: $OVERRIDE_FILE"
+fi
 debug "Using input file: $OVERRIDE_FILE"
 
 # Copy the override file as the input file
