@@ -23,9 +23,9 @@ PROFILE_VARS = ['qc', 'qi', 'qrain', 'qsnow', 'qgraup']
 # Colors matching the composite plot scheme
 COLORS = {
     'qc': '#999999',      # Grey - cloud water
-    'qi': '#444444',      # Dark grey - ice (white on dark bg, dark on light bg)
+    'qi': '#9933FF',      # Purple - ice
     'qrain': '#4D80FF',   # Blue - rain
-    'qsnow': '#FF3333',   # Red - snow
+    'qsnow': '#FF66CC',   # Pink - snow
     'qgraup': '#FF9900',  # Orange - graupel
 }
 
@@ -37,6 +37,22 @@ LABELS = {
     'qsnow': 'snow ($q_{snow}$)',
     'qgraup': 'graupel ($q_{graup}$)',
 }
+
+# Line widths: thinner for cloud (background), thicker for primary species
+LINEWIDTHS = {
+    'qc': 1.5,
+    'qi': 2.5,
+    'qrain': 2.5,
+    'qsnow': 2.5,
+    'qgraup': 2.5,
+}
+
+
+def format_time(seconds):
+    """Format time as seconds or minutes depending on magnitude."""
+    if seconds < 120:
+        return f'{seconds:.1f} s'
+    return f'{seconds / 60:.1f} min'
 
 
 def plot_vertical_profiles(cg, var_list, time, output_file, domain_extent,
@@ -52,8 +68,8 @@ def plot_vertical_profiles(cg, var_list, time, output_file, domain_extent,
         domain_extent: tuple of (x_extent, y_extent, z_extent) in meters
         xmax: fixed upper x-axis limit for consistent scaling across timesteps
     """
-    # Get z coordinates (convert from cm to km)
-    z = np.array(cg['z'][0, 0, :]) / 1e5  # cm to km
+    # Get z coordinates (convert from cm to m)
+    z = np.array(cg['z'][0, 0, :]) / 1e2  # cm to m
 
     fig, ax = plt.subplots(figsize=(8, 10))
 
@@ -62,16 +78,20 @@ def plot_vertical_profiles(cg, var_list, time, output_file, domain_extent,
         field_3d = np.array(cg[('boxlib', var)])  # Shape: (nx, ny, nz)
         profile = np.mean(field_3d, axis=(0, 1))  # Average over x, y -> (nz,)
 
-        # Only plot if there's nonzero data
-        if np.max(profile) > 1e-10:
-            ax.plot(profile, z, linewidth=2, color=COLORS[var],
+        # Clean up noise near threshold by setting small values to NaN
+        profile = profile.astype(float)
+        profile[profile < 1e-7] = np.nan
+
+        # Only plot if there's meaningful data
+        if np.any(np.isfinite(profile)):
+            ax.plot(profile, z, linewidth=LINEWIDTHS[var], color=COLORS[var],
                     label=LABELS[var])
 
     ax.set_xscale('log')
-    ax.set_xlim(1e-8, xmax)
+    ax.set_xlim(1e-7, xmax)
     ax.set_xlabel('Mixing ratio (kg/kg)', fontsize=14)
-    ax.set_ylabel('Z (km)', fontsize=14)
-    ax.set_title(f'Vertical profiles at t = {time:.1f} s', fontsize=16)
+    ax.set_ylabel('Z (m)', fontsize=14)
+    ax.set_title(f'Vertical profiles at t = {format_time(time)}', fontsize=16)
     ax.legend(fontsize=11, loc='best')
     ax.grid(True, alpha=0.3, which='both')
     ax.set_ylim(z[0], z[-1])

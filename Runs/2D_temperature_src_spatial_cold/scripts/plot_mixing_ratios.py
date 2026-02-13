@@ -28,15 +28,16 @@ COLORS = {
     'qc': np.array([0.6, 0.6, 0.6]),      # Light grey - cloud water
     'qi': np.array([1.0, 1.0, 1.0]),      # White - ice
     'qrain': np.array([0.3, 0.5, 1.0]),   # Bright blue - rain
-    'qsnow': np.array([1.0, 0.2, 0.2]),   # Red - snow
+    'qsnow': np.array([1.0, 0.4, 0.8]),   # Pink/magenta - snow
     'qgraup': np.array([1.0, 0.6, 0.0])   # Bright orange - graupel
 }
 
 # Gamma exponent for power-law alpha scaling (< 1 enhances weak features)
 GAMMA = 0.4
 
-# Cloud opacity scaling factor (dims cloud relative to other species)
+# Opacity scaling factors (dim dominant species to let others show)
 CLOUD_OPACITY = 0.3
+GRAUPEL_OPACITY = 0.5
 
 # Display labels for variables
 LABELS = {
@@ -46,6 +47,12 @@ LABELS = {
     'qsnow': 'snow',
     'qgraup': 'graupel'
 }
+
+def format_time(seconds):
+    """Format time as seconds or minutes depending on magnitude."""
+    if seconds < 120:
+        return f'{seconds:.1f} s'
+    return f'{seconds / 60:.1f} min'
 
 def normalize_field(field_data, min_threshold=1e-8, gamma=1.0):
     """
@@ -87,15 +94,15 @@ def plot_composite_microphysics(cg, var_list, time, output_file, domain_extent):
         output_file: path to save the plot
         domain_extent: tuple of (x_extent, y_extent, z_extent) in meters
     """
-    # Get coordinates (convert from cm to km)
-    x = np.array(cg['x'][:, 0, 0]) / 1e5  # cm to km
-    y = np.array(cg['y'][0, :, 0]) / 1e5
-    z = np.array(cg['z'][0, 0, :]) / 1e5
+    # Get coordinates (convert from cm to m)
+    x = np.array(cg['x'][:, 0, 0]) / 1e2  # cm to m
+    y = np.array(cg['y'][0, :, 0]) / 1e2
+    z = np.array(cg['z'][0, 0, :]) / 1e2
 
     # Set up figure with proper aspect ratio
-    x_extent_km = domain_extent[0] / 1000
-    z_extent_km = domain_extent[2] / 1000
-    aspect_ratio = x_extent_km / z_extent_km
+    x_extent_m = domain_extent[0]
+    z_extent_m = domain_extent[2]
+    aspect_ratio = x_extent_m / z_extent_m
 
     fig_height = 12
     fig_width = fig_height * aspect_ratio * 1.2
@@ -124,9 +131,11 @@ def plot_composite_microphysics(cg, var_list, time, output_file, domain_extent):
             # Normalize with gamma correction
             alpha = normalize_field(field_2d, min_threshold=1e-8, gamma=GAMMA)
 
-            # Dim cloud so it doesn't overwhelm other species
+            # Dim dominant species so they don't overwhelm others
             if var == 'qc':
                 alpha *= CLOUD_OPACITY
+            elif var == 'qgraup':
+                alpha *= GRAUPEL_OPACITY
 
             # Get RGB color for this variable
             rgb = COLORS[var]
@@ -143,9 +152,9 @@ def plot_composite_microphysics(cg, var_list, time, output_file, domain_extent):
         ax.imshow(rgb_image, extent=extent, aspect='auto', origin='lower',
                   interpolation='nearest')
 
-        ax.set_xlabel('X (km)', fontsize=14)
-        ax.set_ylabel('Z (km)', fontsize=14)
-        ax.set_title(f'Mixing ratios at t = {time:.1f} s', fontsize=16)
+        ax.set_xlabel('X (m)', fontsize=14)
+        ax.set_ylabel('Z (m)', fontsize=14)
+        ax.set_title(f'Mixing ratios at t = {format_time(time)}', fontsize=16)
 
         # Extend y-axis to leave room for the legend above the data
         z_range = z[-1] - z[0]
@@ -181,18 +190,18 @@ def plot_qv_separately(cg, time, output_file, domain_extent):
         output_file: path to save the plot
         domain_extent: tuple of (x_extent, y_extent, z_extent) in meters
     """
-    # Get coordinates (convert from cm to km)
-    x = np.array(cg['x'][:, 0, 0]) / 1e5
-    z = np.array(cg['z'][0, 0, :]) / 1e5
+    # Get coordinates (convert from cm to m)
+    x = np.array(cg['x'][:, 0, 0]) / 1e2
+    z = np.array(cg['z'][0, 0, :]) / 1e2
 
     # Get field and average over y-direction
     field_3d = np.array(cg[('boxlib', 'qv')])
     field_2d = np.mean(field_3d, axis=1).T  # (nz, nx)
 
     # Set up figure with proper aspect ratio
-    x_extent_km = domain_extent[0] / 1000
-    z_extent_km = domain_extent[2] / 1000
-    aspect_ratio = x_extent_km / z_extent_km
+    x_extent_m = domain_extent[0]
+    z_extent_m = domain_extent[2]
+    aspect_ratio = x_extent_m / z_extent_m
 
     fig_height = 12
     fig_width = fig_height * aspect_ratio * 1.2
@@ -216,9 +225,9 @@ def plot_qv_separately(cg, time, output_file, domain_extent):
     im = ax.imshow(rgba_image, extent=extent, aspect='auto', origin='lower',
                    interpolation='bilinear')
 
-    ax.set_xlabel('X (km)', fontsize=14)
-    ax.set_ylabel('Z (km)', fontsize=14)
-    ax.set_title(f'Vapour mixing ratio at t = {time:.1f} s', fontsize=16)
+    ax.set_xlabel('X (m)', fontsize=14)
+    ax.set_ylabel('Z (m)', fontsize=14)
+    ax.set_title(f'Vapour mixing ratio at t = {format_time(time)}', fontsize=16)
 
     # Extend y-axis to leave room above the data
     z_range = z[-1] - z[0]
@@ -279,7 +288,7 @@ def plot_all_microphysics(run_dir, output_dir):
     available_vars = [name for (_, name) in ds.field_list]
     domain_extent = get_domain_extent(ds)
 
-    print(f"Domain extent: {domain_extent[0]/1000:.1f} km x {domain_extent[1]/1000:.1f} km x {domain_extent[2]/1000:.1f} km")
+    print(f"Domain extent: {domain_extent[0]:.1f} m x {domain_extent[1]:.1f} m x {domain_extent[2]:.1f} m")
 
     # Filter to only available q variables
     q_vars_available = [var for var in Q_VARS if var in available_vars]
@@ -345,7 +354,7 @@ if __name__ == '__main__':
         print("  cloud (qc)       : Dark grey")
         print("  ice (qi)         : White")
         print("  rain (qrain)     : Blue")
-        print("  snow (qsnow)     : Red")
+        print("  snow (qsnow)     : Pink/magenta")
         print("  graupel (qgraup) : Orange")
         print("\nNote: Brightness indicates field magnitude in composite plots.")
         print("=" * 70)
