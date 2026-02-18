@@ -197,7 +197,7 @@ EOF
 
 # Clean up previous run outputs
 echo "Cleaning up previous run outputs..."
-rm -f out.*.log Backtrace.* *.core
+rm -f out.*.log Backtrace.* *core*
 rm -rf plt* chk* super_droplets_*.txt
 
 export OMP_NUM_THREADS=1
@@ -233,7 +233,7 @@ EOF
 
 # Clean up previous run outputs
 echo "Cleaning up previous run outputs..."
-rm -f out.*.log Backtrace.* *.core
+rm -f out.*.log Backtrace.* *core*
 rm -rf plt* chk* super_droplets_*.txt
 
 export OMP_NUM_THREADS=1
@@ -284,7 +284,7 @@ set -e
 
 # Clean up previous run outputs
 echo "Cleaning up previous run outputs..."
-rm -f out.*.log Backtrace.* *.core
+rm -f out.*.log Backtrace.* *core*
 rm -rf plt* chk* super_droplets_*.txt
 
 export OMP_NUM_THREADS=1
