@@ -23,14 +23,20 @@ Q_VARS = ['qv', 'qc', 'qi', 'qrain', 'qsnow', 'qgraup', 'qt']
 # Variables to overlay (all q except qv)
 OVERLAY_VARS = ['qc', 'qi', 'qrain', 'qsnow', 'qgraup']
 
-# Color scheme for each variable
+# Color scheme for each variable (bright, saturated for dark background)
 COLORS = {
-    'qc': np.array([0.3, 0.3, 0.3]),      # Dark grey - cloud water
-    'qi': np.array([0.0, 0.6, 0.0]),      # Green - ice
-    'qrain': np.array([0.2, 0.4, 0.8]),   # Blue - rain
-    'qsnow': np.array([0.8, 0.2, 0.8]),   # Magenta - snow
-    'qgraup': np.array([0.8, 0.4, 0.0])   # Orange - graupel
+    'qc': np.array([0.6, 0.6, 0.6]),      # Light grey - cloud water
+    'qi': np.array([1.0, 1.0, 1.0]),      # White - ice
+    'qrain': np.array([0.3, 0.5, 1.0]),   # Bright blue - rain
+    'qsnow': np.array([1.0, 0.2, 0.2]),   # Red - snow
+    'qgraup': np.array([1.0, 0.6, 0.0])   # Bright orange - graupel
 }
+
+# Gamma exponent for power-law alpha scaling (< 1 enhances weak features)
+GAMMA = 0.4
+
+# Cloud opacity scaling factor (dims cloud relative to other species)
+CLOUD_OPACITY = 0.3
 
 # Display labels for variables
 LABELS = {
@@ -41,33 +47,38 @@ LABELS = {
     'qgraup': 'graupel'
 }
 
-def normalize_field(field_data, min_threshold=1e-8):
+def normalize_field(field_data, min_threshold=1e-8, gamma=1.0):
     """
-    Normalize field data to [0, 1] for alpha channel.
+    Normalize field data to [0, 1] for alpha channel with power-law scaling.
     Values below min_threshold are set to 0.
 
     Args:
         field_data: numpy array of field values
         min_threshold: minimum value to consider (below this is 0)
+        gamma: power-law exponent (< 1 enhances weak features, > 1 suppresses)
 
     Returns:
         Normalized array with values in [0, 1]
     """
-    # Mask values below threshold
     data = np.copy(field_data)
     data[data < min_threshold] = 0
 
-    # Normalize to [0, 1]
     max_val = np.nanmax(data)
     if max_val > 0:
         data = data / max_val
+
+    # Apply gamma correction
+    if gamma != 1.0:
+        mask = data > 0
+        data[mask] = data[mask] ** gamma
 
     return data
 
 def plot_composite_microphysics(cg, var_list, time, output_file, domain_extent):
     """
-    Create a composite plot with multiple microphysics variables overlaid.
-    Each variable has its own color, with transparency indicating magnitude.
+    Create a composite plot with multiple microphysics variables overlaid
+    on a dark background. Each variable has its own color, with gamma-corrected
+    transparency indicating magnitude. Cloud is dimmed to let other species show.
 
     Args:
         cg: yt covering grid object
@@ -86,68 +97,79 @@ def plot_composite_microphysics(cg, var_list, time, output_file, domain_extent):
     z_extent_km = domain_extent[2] / 1000
     aspect_ratio = x_extent_km / z_extent_km
 
-    fig_height = 8
-    fig_width = fig_height * aspect_ratio * 1.2  # Extra space for colorbar
+    fig_height = 12
+    fig_width = fig_height * aspect_ratio * 1.2
 
-    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+    # Dark style
+    with plt.style.context('dark_background'):
+        fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+        fig.set_facecolor('black')
+        ax.set_facecolor('black')
 
-    # Create RGBA image
-    nx, nz = len(x), len(z)
-    rgba_image = np.zeros((nz, nx, 4))
+        # Create RGB image (composited onto black background directly)
+        nx, nz = len(x), len(z)
+        rgb_image = np.zeros((nz, nx, 3))
 
-    # Track which variables are actually present
-    present_vars = []
+        # Track which variables are actually present
+        present_vars = []
 
-    # Overlay each variable
-    for var in var_list:
-        present_vars.append(var)
+        # Render cloud first as a dim base layer, then other species on top
+        for var in var_list:
+            present_vars.append(var)
 
-        # Get 3D field and average over y-direction
-        field_3d = np.array(cg[('boxlib', var)])  # Shape: (nx, ny, nz)
-        field_2d = np.mean(field_3d, axis=1).T  # Average over y, transpose to (nz, nx)
+            # Get 3D field and average over y-direction
+            field_3d = np.array(cg[('boxlib', var)])  # Shape: (nx, ny, nz)
+            field_2d = np.mean(field_3d, axis=1).T  # (nz, nx)
 
-        # Normalize for alpha channel
-        alpha = normalize_field(field_2d, min_threshold=1e-8)
+            # Normalize with gamma correction
+            alpha = normalize_field(field_2d, min_threshold=1e-8, gamma=GAMMA)
 
-        # Get RGB color for this variable
-        rgb = COLORS[var]
+            # Dim cloud so it doesn't overwhelm other species
+            if var == 'qc':
+                alpha *= CLOUD_OPACITY
 
-        # Add this variable to the composite image
-        # Use additive blending for overlapping regions
-        for i in range(3):  # RGB channels
-            rgba_image[:, :, i] += rgb[i] * alpha
-        rgba_image[:, :, 3] = np.maximum(rgba_image[:, :, 3], alpha)  # Max alpha
+            # Get RGB color for this variable
+            rgb = COLORS[var]
 
-    # Clip RGB values to [0, 1]
-    rgba_image[:, :, :3] = np.clip(rgba_image[:, :, :3], 0, 1)
+            # Additive blending onto black background
+            for i in range(3):
+                rgb_image[:, :, i] += rgb[i] * alpha
 
-    # Plot the composite image
-    extent = [x[0], x[-1], z[0], z[-1]]
-    im = ax.imshow(rgba_image, extent=extent, aspect='auto', origin='lower',
-                   interpolation='bilinear')
+        # Clip to valid range
+        rgb_image = np.clip(rgb_image, 0, 1)
 
-    ax.set_xlabel('X (km)', fontsize=14)
-    ax.set_ylabel('Z (km)', fontsize=14)
-    ax.set_title(f'Mixing ratios at t = {time:.1f} s', fontsize=16)
+        # Plot the composite image
+        extent = [x[0], x[-1], z[0], z[-1]]
+        ax.imshow(rgb_image, extent=extent, aspect='auto', origin='lower',
+                  interpolation='nearest')
 
-    # Set aspect ratio to match physical domain
-    ax.set_aspect(aspect_ratio)
+        ax.set_xlabel('X (km)', fontsize=14)
+        ax.set_ylabel('Z (km)', fontsize=14)
+        ax.set_title(f'Mixing ratios at t = {time:.1f} s', fontsize=16)
 
-    # Create legend
-    from matplotlib.patches import Patch
-    legend_elements = [Patch(facecolor=COLORS[var], label=LABELS[var])
-                      for var in present_vars]
-    ax.legend(handles=legend_elements, loc='upper right', fontsize=11,
-             framealpha=0.9)
+        # Extend y-axis to leave room for the legend above the data
+        z_range = z[-1] - z[0]
+        ax.set_ylim(z[0], z[-1] + 0.15 * z_range)
 
-    # Add text note about transparency
-    ax.text(0.02, 0.98, 'Transparency indicates magnitude',
-           transform=ax.transAxes, fontsize=10, verticalalignment='top',
-           bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+        # Set aspect ratio to match physical domain
+        ax.set_aspect(aspect_ratio)
 
-    plt.tight_layout()
-    plt.savefig(output_file, dpi=150, bbox_inches='tight')
-    plt.close(fig)
+        # Create legend with dark styling
+        from matplotlib.patches import Patch
+        legend_elements = [Patch(facecolor=COLORS[var], label=LABELS[var])
+                          for var in present_vars]
+        leg = ax.legend(handles=legend_elements, loc='upper right', fontsize=11,
+                 title='Brightness $\\propto$ magnitude',
+                 title_fontsize=9, facecolor='#1a1a1a', edgecolor='#444444',
+                 framealpha=0.9)
+        leg.get_title().set_color('white')
+        for text in leg.get_texts():
+            text.set_color('white')
+
+        plt.tight_layout()
+        plt.savefig(output_file, dpi=300, bbox_inches='tight',
+                    facecolor='black')
+        plt.close(fig)
 
 def plot_qv_separately(cg, time, output_file, domain_extent):
     """
@@ -172,7 +194,7 @@ def plot_qv_separately(cg, time, output_file, domain_extent):
     z_extent_km = domain_extent[2] / 1000
     aspect_ratio = x_extent_km / z_extent_km
 
-    fig_height = 8
+    fig_height = 12
     fig_width = fig_height * aspect_ratio * 1.2
 
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
@@ -197,6 +219,11 @@ def plot_qv_separately(cg, time, output_file, domain_extent):
     ax.set_xlabel('X (km)', fontsize=14)
     ax.set_ylabel('Z (km)', fontsize=14)
     ax.set_title(f'Vapour mixing ratio at t = {time:.1f} s', fontsize=16)
+
+    # Extend y-axis to leave room above the data
+    z_range = z[-1] - z[0]
+    ax.set_ylim(z[0], z[-1] + 0.5 * z_range)
+
     ax.set_aspect(aspect_ratio)
 
     # Create a colorbar for reference (showing actual values)
@@ -213,7 +240,7 @@ def plot_qv_separately(cg, time, output_file, domain_extent):
     cbar.set_label('qv (kg/kg)', fontsize=12)
 
     plt.tight_layout()
-    plt.savefig(output_file, dpi=150, bbox_inches='tight')
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
     plt.close(fig)
 
 def get_domain_extent(ds):
@@ -297,69 +324,6 @@ def plot_all_microphysics(run_dir, output_dir):
 
         print(f"  Saved plots to {output_dir}/")
 
-def plot_time_series(run_dir, output_dir):
-    """
-    Create time series plots showing evolution of domain-averaged q quantities.
-
-    Args:
-        run_dir: path to the run directory containing plt* subdirectories
-        output_dir: directory to save plots
-    """
-    plotfiles = sorted(glob(os.path.join(run_dir, 'plt*')))
-
-    if not plotfiles:
-        return
-
-    print("\nCreating time series plots...")
-
-    # Get available variables
-    ds = yt.load(plotfiles[0])
-    available_vars = [name for (_, name) in ds.field_list]
-    q_vars_available = [var for var in Q_VARS if var in available_vars]
-
-    # Storage for time series
-    times = []
-    series_data = {var: [] for var in q_vars_available}
-
-    # Extract domain averages at each time
-    for pltfile in plotfiles:
-        ds = yt.load(pltfile)
-        time = float(ds.current_time)
-        times.append(time)
-
-        cg = ds.covering_grid(0, ds.domain_left_edge, ds.domain_dimensions,
-                             fields=q_vars_available)
-
-        for var in q_vars_available:
-            cg[('boxlib', var)]
-            data = np.array(cg[('boxlib', var)])
-            series_data[var].append(np.mean(data))
-
-    times = np.array(times)
-
-    # Create time series plots
-    fig, axes = plt.subplots(len(q_vars_available), 1,
-                            figsize=(12, 2.5*len(q_vars_available)), sharex=True)
-
-    if len(q_vars_available) == 1:
-        axes = [axes]
-
-    for ax, var in zip(axes, q_vars_available):
-        color = COLORS.get(var, np.array([0, 0, 0]))
-        ax.plot(times, series_data[var], linewidth=2, color=color)
-        ax.set_ylabel(f'{var} (kg/kg)', fontsize=11)
-        ax.grid(True, alpha=0.3)
-        ax.set_xlim(times[0], times[-1])
-
-    axes[-1].set_xlabel('Time (s)', fontsize=12)
-    axes[0].set_title('Domain-Averaged Microphysics Quantities', fontsize=14)
-
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'time_series_q.png'), dpi=150, bbox_inches='tight')
-    plt.close(fig)
-
-    print(f"  Saved time series plot to {output_dir}/time_series_q.png")
-
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         print("=" * 70)
@@ -377,14 +341,13 @@ if __name__ == '__main__':
         print("  - composite_plt*.png : Overlaid mixing ratios (cloud, ice, rain,")
         print("                         snow, graupel) with color-coded transparency")
         print("  - qv_plt*.png        : Vapour mixing ratio plotted separately")
-        print("  - time_series_q.png  : Domain-averaged time evolution of all q variables")
         print("\nColor scheme:")
         print("  cloud (qc)       : Dark grey")
-        print("  ice (qi)         : Green")
+        print("  ice (qi)         : White")
         print("  rain (qrain)     : Blue")
-        print("  snow (qsnow)     : Magenta")
+        print("  snow (qsnow)     : Red")
         print("  graupel (qgraup) : Orange")
-        print("\nNote: Transparency indicates field magnitude in all plots.")
+        print("\nNote: Brightness indicates field magnitude in composite plots.")
         print("=" * 70)
         sys.exit(1)
 
@@ -401,8 +364,5 @@ if __name__ == '__main__':
 
     # Create composite plots for each timestep
     plot_all_microphysics(run_dir, output_dir)
-
-    # Create time series plots
-    plot_time_series(run_dir, output_dir)
 
     print("\nDone!")
