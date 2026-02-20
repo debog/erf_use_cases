@@ -1,5 +1,5 @@
 # ------------------  INPUTS TO MAIN PROGRAM  -------------------
-max_step  = 200
+max_step  = 2000
 stop_time = 3600.0
 
 amrex.fpe_trap_invalid = 1
@@ -25,7 +25,7 @@ erf.v              = 1       # verbosity in ERF.cpp
 amr.v              = 1       # verbosity in Amr.cpp
 
 # REFINEMENT / REGRIDDING
-amr.max_level       = 0       # maximum level number allowed (one refinement level)
+amr.max_level       = 1       # maximum level number allowed (one refinement level)
 amr.ref_ratio       = 2 2 2   # refinement ratio: 2x in x, y, and z directions
 erf.regrid_int      = 10      # regrid interval (check every 10 timesteps)
 erf.coupling_type   = "TwoWay"
@@ -35,8 +35,8 @@ erf.refinement_indicators = qc_refine
 
 erf.qc_refine.max_level = 1
 erf.qc_refine.field_name = qc
-erf.qc_refine.value_greater = 1.0e-6  # kg/kg - refine where qc > 1e-6
-erf.qc_refine.start_time = 10.0      # Don't refine before 100s (let cloud form first)
+erf.qc_refine.value_greater = 1.0e-4  # kg/kg - refine where qc > 1e-4
+erf.qc_refine.start_time = 100.0      # Don't refine before 100s (let cloud form first)
 
 # CHECKPOINT FILES
 erf.check_file      = chk        # root name of checkpoint file
@@ -44,7 +44,7 @@ erf.check_int       = -1         # number of timesteps between checkpoints
 
 # PLOTFILES
 erf.plot_file_1     = plt        # prefix of plotfile name
-erf.plot_int_1      = 10         # number of timesteps between plotfiles
+erf.plot_int_1      = 100        # number of timesteps between plotfiles
 erf.plot_vars_1     = density rhotheta rhoQ1 rhoQ2 rhoadv_0 x_velocity y_velocity z_velocity pressure theta scalar temp pres_hse dens_hse pert_pres pert_dens eq_pot_temp qt qv qc qrain rain_accum super_droplets_moisture_number_density super_droplets_moisture_mass_density
 #particles.disable_plt = true     # Disable particle data in plot files
 
@@ -84,7 +84,7 @@ super_droplets_moisture.initial_aerosol_min_mass_NaCl = 1.0e-22 #kg
 super_droplets_moisture.initial_aerosol_mean_mass_NaCl = 1.0e-19 #kg
 super_droplets_moisture.initial_aerosol_max_mass_NaCl = 1.0e-18 #kg
 super_droplets_moisture.initial_number_density = 1.0e7 #m^{-3}
-super_droplets_moisture.initial_particles_per_cell = 1
+super_droplets_moisture.initial_particles_per_cell = 256
 
 # PROBLEM PARAMETERS (optional)
 # warm bubble input
