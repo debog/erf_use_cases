@@ -7,7 +7,7 @@
 #   ./profile_erf.sh [OPTIONS]
 #
 # Options:
-#   -c, --case=NAME       Input case name (default: BF02_moist_bubble_SDM_unimodal_NaCl)
+#   -c, --case=NAME       Input case name (default: BF02_dry_bubble_AMR1)
 #   -m, --mode=MODE       Execution mode: interactive (default) or batch
 #   -n, --ntasks=N        Override number of MPI tasks
 #   -N, --nnodes=N        Override number of nodes
@@ -45,7 +45,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 CONFIG_FILE="$SCRIPT_DIR/platforms.conf"
 INPUTS_DIR="$ROOT_DIR/inputs"
-DEFAULT_CASE="BF02_moist_bubble_SDM_unimodal_NaCl"
+DEFAULT_CASE="BF02_dry_bubble_AMR1"
 
 # =============================================================================
 # Color output (disabled if not a terminal)
@@ -488,6 +488,11 @@ run_profile_batch() {
 # =============================================================================
 # Main
 # =============================================================================
+
+# Show help if no arguments provided
+if [[ $# -eq 0 ]]; then
+    usage
+fi
 
 # Parse command line arguments
 CASE="${CASE:-}"

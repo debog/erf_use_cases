@@ -106,6 +106,11 @@ merge_inputs() {
     } > "$output_file"
 }
 
+# Show help if no arguments provided
+if [[ $# -eq 0 ]]; then
+    usage
+fi
+
 # Parse arguments
 BASE_FILE="$DEFAULT_BASE"
 OUTPUT_DIR="$DEFAULT_OUTPUT_DIR"
