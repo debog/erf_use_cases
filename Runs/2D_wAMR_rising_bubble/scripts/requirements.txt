@@ -1,0 +1,11 @@
+# Python dependencies for ERF plotting scripts
+# Install with: pip install -r requirements.txt
+
+# yt - For reading AMReX/BoxLib plotfiles and AMR data
+yt>=4.0.0
+
+# NumPy - Numerical computing
+numpy>=1.20.0
+
+# Matplotlib - Plotting and visualization
+matplotlib>=3.3.0
