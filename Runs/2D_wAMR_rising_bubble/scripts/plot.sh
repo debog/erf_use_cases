@@ -9,6 +9,9 @@
 #   -r, --run=DIR         Run directory to process (default: auto-detect from .run_*)
 #   -o, --output=DIR      Output directory for plots (default: <run_dir>/plots)
 #   -p, --with-particles  Include particle position plots
+#   -f, --field=FIELD     Field to plot (default: super_droplets_moisture_number_density)
+#                         For moist bubble use: qc
+#   -m, --mass-alpha      Use particle mass for transparency (log scale)
 #   -t, --type=TYPE       Plot type: superdroplets (default)
 #   -h, --help            Show this help message
 #
@@ -42,6 +45,8 @@ fi
 RUN_DIR=""
 OUTPUT_DIR=""
 WITH_PARTICLES=""
+FIELD_NAME=""
+MASS_ALPHA=""
 PLOT_TYPE="superdroplets"
 
 while [[ $# -gt 0 ]]; do
@@ -51,7 +56,11 @@ while [[ $# -gt 0 ]]; do
         -o|--output=*)
             [[ "$1" == -o ]] && { shift; OUTPUT_DIR="$1"; } || OUTPUT_DIR="${1#*=}" ;;
         -p|--with-particles)
-            WITH_PARTICLES="--with-particles" ;;
+            WITH_PARTICLES="-p" ;;
+        -f|--field=*)
+            [[ "$1" == -f ]] && { shift; FIELD_NAME="$1"; } || FIELD_NAME="${1#*=}" ;;
+        -m|--mass-alpha)
+            MASS_ALPHA="--particle-mass-alpha" ;;
         -t|--type=*)
             [[ "$1" == -t ]] && { shift; PLOT_TYPE="$1"; } || PLOT_TYPE="${1#*=}" ;;
         -h|--help)
@@ -99,13 +108,21 @@ case "$PLOT_TYPE" in
             error "Plot script not found: $PLOT_SCRIPT"
         fi
 
-        info "Plotting super-droplet fields"
+        info "Plotting fields"
         info "  Input:  $RUN_DIR"
         info "  Output: $OUTPUT_DIR"
+        [[ -n "$FIELD_NAME" ]] && info "  Field: $FIELD_NAME"
         [[ -n "$WITH_PARTICLES" ]] && info "  Particles: enabled"
+        [[ -n "$MASS_ALPHA" ]] && info "  Particle alpha: mass-weighted"
         echo
 
-        python3 "$PLOT_SCRIPT" "$RUN_DIR" -o "$OUTPUT_DIR" $WITH_PARTICLES
+        # Build command with optional arguments
+        CMD="python3 \"$PLOT_SCRIPT\" \"$RUN_DIR\" -o \"$OUTPUT_DIR\""
+        [[ -n "$WITH_PARTICLES" ]] && CMD="$CMD $WITH_PARTICLES"
+        [[ -n "$FIELD_NAME" ]] && CMD="$CMD -f \"$FIELD_NAME\""
+        [[ -n "$MASS_ALPHA" ]] && CMD="$CMD $MASS_ALPHA"
+
+        eval $CMD
         ;;
     *)
         error "Unknown plot type: $PLOT_TYPE"

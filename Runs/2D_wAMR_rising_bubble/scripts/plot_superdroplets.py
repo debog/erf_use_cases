@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """
-Script to plot super-droplet fields from ERF AMR simulations at each timestep.
+Script to plot fields from ERF AMR simulations (dry and moist bubble cases).
 
 This script creates 2D (x-z) plots showing:
-  1. Super-droplet moisture number density with AMR mesh overlay
+  1. Field with AMR mesh overlay (super-droplet number density, qc, etc.)
   2. (Optional) Particle positions in the domain
 
 Usage:
     python plot_superdroplets.py <run_directory> [options]
 
 Examples:
-    python plot_superdroplets.py .run_BF02_dry_bubble_AMR1.matrix.nproc00004
-    python plot_superdroplets.py .run_BF02_dry_bubble_AMR1.matrix.nproc00004 --with-particles
-    python plot_superdroplets.py .run_BF02_dry_bubble_AMR1.matrix.nproc00004 -o custom_plots
+    # Dry bubble
+    python plot_superdroplets.py .run_BF02_dry_bubble_AMR1.matrix.nproc00004 -p
+
+    # Moist bubble with qc and mass-weighted particles
+    python plot_superdroplets.py .run_BF02_moist_bubble_SDM.matrix.nproc00004 -f qc -p --particle-mass-alpha
 """
 
 import yt
@@ -174,15 +176,17 @@ def get_amr_mesh_lines(ds):
     return mesh_lines
 
 
-def read_particle_positions(ds):
+def read_particle_positions(ds, read_mass=False):
     """
     Read super-droplet particle positions from plotfile dataset.
 
     Args:
         ds: yt dataset
+        read_mass: whether to also read particle mass data
 
     Returns:
-        Numpy array of particle positions (N, 3) in meters, or None if no particles
+        If read_mass=False: Numpy array of particle positions (N, 3) in meters, or None if no particles
+        If read_mass=True: Tuple of (positions, masses) or (None, None) if no particles
     """
     pcname = "super_droplets_moisture"
 
@@ -192,22 +196,20 @@ def read_particle_positions(ds):
 
         if not particle_fields:
             print(f"  No particle data found in plotfile")
-            return None
+            return (None, None) if read_mass else None
+
+        # Use all_data() to get particles from all AMR levels
+        ad = ds.all_data()
 
         # Get particle position field names
-        pos_fields = [
-            (pcname, "particle_position_x"),
-            (pcname, "particle_position_y"),
-            (pcname, "particle_position_z")
-        ]
+        pos_x_field = (pcname, "particle_position_x")
+        pos_y_field = (pcname, "particle_position_y")
+        pos_z_field = (pcname, "particle_position_z")
 
-        # Load particle data using covering grid
-        cg = ds.covering_grid(0, ds.domain_left_edge, ds.domain_dimensions, fields=pos_fields)
-
-        # Extract positions
-        x_particles = np.array(cg[pos_fields[0]])  # In code units (cm)
-        y_particles = np.array(cg[pos_fields[1]])
-        z_particles = np.array(cg[pos_fields[2]])
+        # Extract positions - this gets particles from all AMR levels
+        x_particles = np.array(ad[pos_x_field])  # In code units (cm)
+        y_particles = np.array(ad[pos_y_field])
+        z_particles = np.array(ad[pos_z_field])
 
         # Convert from cm to m
         x_particles = x_particles / 100.0
@@ -219,18 +221,46 @@ def read_particle_positions(ds):
 
         print(f"  Read {len(positions)} particles from plotfile")
 
-        return positions
+        if read_mass:
+            # Try to read particle mass - check multiple possible field names
+            possible_mass_fields = [
+                (pcname, "particle_particle_mass"),
+                (pcname, "particle_mass"),
+                (pcname, "particle_species_mass_H2O"),
+                (pcname, "particle_species_mass_ice"),
+            ]
+
+            masses = None
+            for mass_field in possible_mass_fields:
+                try:
+                    masses = np.array(ad[mass_field])
+                    print(f"  Read particle masses from {mass_field[1]}: min={np.min(masses):.2e}, max={np.max(masses):.2e}")
+                    return positions, masses
+                except:
+                    continue
+
+            # If none worked, list available particle fields
+            if masses is None:
+                particle_field_names = [name for (ptype, name) in ds.field_list if ptype == pcname]
+                print(f"  WARNING: Could not find particle mass field")
+                print(f"  Available {pcname} fields: {particle_field_names}")
+                return positions, None
+        else:
+            return positions
 
     except Exception as e:
         print(f"  WARNING: Could not read particles from plotfile: {e}")
-        return None
+        import traceback
+        traceback.print_exc()
+        return (None, None) if read_mass else None
 
 
 def plot_superdroplet_fields(ds, time, output_file, domain_extent,
-                             with_particles=False):
+                             with_particles=False, field_name='super_droplets_moisture_number_density',
+                             particle_mass_alpha=False):
     """
     Create a 2-panel plot showing:
-      1. Super-droplet moisture number density with AMR mesh
+      1. Field with AMR mesh
       2. (Optional) Particle positions
 
     Args:
@@ -239,6 +269,8 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
         output_file: path to save the plot
         domain_extent: tuple of (x_extent, y_extent, z_extent) in meters
         with_particles: whether to include particle plot
+        field_name: name of field to plot (default: super_droplets_moisture_number_density)
+        particle_mass_alpha: whether to use particle mass for transparency (log scale)
     """
     # Set up figure with proper aspect ratio
     # Plot region: x=[50, 150] (100m), z=[0, 100] (100m)
@@ -255,19 +287,21 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
         fig_width = fig_height * plot_aspect * ncols
         fig, axes = plt.subplots(1, ncols, figsize=(fig_width, fig_height))
         axes = list(axes)  # Make it iterable
+        # Set figure background to avoid conflict with white text on particle panel
+        fig.patch.set_facecolor('white')
     else:
         fig_height = 12
         fig_width = fig_height * plot_aspect
         fig, axes = plt.subplots(1, 1, figsize=(fig_width, fig_height))
         axes = [axes]  # Make it iterable
+        fig.patch.set_facecolor('white')
 
-    # Check if number density field exists
+    # Check if field exists
     available_fields = [name for (_, name) in ds.field_list]
-    field_name = 'super_droplets_moisture_number_density'
 
     if field_name not in available_fields:
         print(f"  WARNING: {field_name} not found in dataset")
-        print(f"  Available fields containing 'droplet': {[f for f in available_fields if 'droplet' in f.lower()]}")
+        print(f"  Available fields: {available_fields[:20]}")
         plt.close(fig)
         return
 
@@ -328,7 +362,14 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
 
     # Add colorbar with better styling
     cbar = plt.colorbar(im, ax=ax, pad=0.02, fraction=0.046)
-    cbar.set_label('Number density (#/m³)', fontsize=20)
+    # Set colorbar label based on field name
+    if 'number_density' in field_name:
+        cbar_label = 'Number density (#/m³)'
+    elif field_name == 'qc':
+        cbar_label = 'qc (kg/kg)'
+    else:
+        cbar_label = field_name
+    cbar.set_label(cbar_label, fontsize=20)
     cbar.ax.tick_params(labelsize=16)
 
     # Overlay computational mesh with thin dark grey lines (almost black)
@@ -337,7 +378,14 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
 
     ax.set_xlabel('X (m)', fontsize=22)
     ax.set_ylabel('Z (m)', fontsize=22)
-    ax.set_title(f'Super-droplet number density, t = {format_time(time)}', fontsize=26)
+    # Set title based on field name
+    if 'number_density' in field_name:
+        title = f'Super-droplet number density, t = {format_time(time)}'
+    elif field_name == 'qc':
+        title = f'Cloud water mixing ratio (qc), t = {format_time(time)}'
+    else:
+        title = f'{field_name}, t = {format_time(time)}'
+    ax.set_title(title, fontsize=26)
     ax.set_xlim(50, 150)  # Set x-axis range
     ax.set_aspect('equal')  # Equal physical scaling: 1m in x = 1m in z
     ax.tick_params(labelsize=18)
@@ -348,8 +396,12 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
     if with_particles:
         ax = axes[1]  # Second column
 
-        # Try to read particle positions from the dataset
-        particles = read_particle_positions(ds)
+        # Try to read particle positions (and masses if needed) from the dataset
+        if particle_mass_alpha:
+            particles, masses = read_particle_positions(ds, read_mass=True)
+        else:
+            particles = read_particle_positions(ds, read_mass=False)
+            masses = None
 
         if particles is not None and len(particles) > 0:
             # Extract x and z coordinates
@@ -357,24 +409,44 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
             y_particles = particles[:, 1]
             z_particles = particles[:, 2]
 
-            # Plot particles as dots/points (no mesh overlay)
-            ax.scatter(x_particles, z_particles, s=0.1, c='black', alpha=0.3,
-                      edgecolors='none', rasterized=True)
+            if particle_mass_alpha and masses is not None:
+                # Use log-scaled mass for alpha values
+                log_masses = np.log10(masses + 1e-30)  # Add small value to avoid log(0)
+                # Normalize to [0.1, 0.9] range for alpha
+                alpha_min, alpha_max = 0.1, 0.9
+                log_min = np.min(log_masses)
+                log_max = np.max(log_masses)
+                if log_max > log_min:
+                    alphas = alpha_min + (alpha_max - alpha_min) * (log_masses - log_min) / (log_max - log_min)
+                else:
+                    alphas = 0.5 * np.ones_like(log_masses)
+
+                # Plot particles with mass-based transparency
+                for i in range(len(x_particles)):
+                    ax.scatter(x_particles[i], z_particles[i], s=0.1, c='white',
+                              alpha=alphas[i], edgecolors='none', rasterized=True)
+                print(f"  Particle mass range: {np.min(masses):.2e} to {np.max(masses):.2e}")
+                print(f"  Alpha range: {np.min(alphas):.2f} to {np.max(alphas):.2f}")
+            else:
+                # Plot particles as uniform bright white dots on black background
+                ax.scatter(x_particles, z_particles, s=0.1, c='white', alpha=0.3,
+                          edgecolors='none', rasterized=True)
 
             ax.set_xlim(50, 150)  # Set x-axis range
             ax.set_ylim(extent[2], extent[3])
             ax.set_xlabel('X (m)', fontsize=22)
             ax.set_ylabel('Z (m)', fontsize=22)
-            ax.set_title(f'Particle positions ({len(particles)} particles)', fontsize=26)
+            title_suffix = ' (mass-weighted)' if (particle_mass_alpha and masses is not None) else ''
+            ax.set_title(f'Particle positions ({len(particles)} particles){title_suffix}', fontsize=26)
             ax.set_aspect('equal')  # Equal physical scaling: 1m in x = 1m in z
             ax.tick_params(labelsize=18)
-            ax.set_facecolor('white')  # White background for particle plot
+            ax.set_facecolor('black')  # Black background for particle plot
         else:
             # No particles found - show empty plot with message
-            ax.set_facecolor('white')  # White background
+            ax.set_facecolor('black')  # Black background
             ax.text(0.5, 0.5, 'No particle data available',
                    ha='center', va='center', transform=ax.transAxes, fontsize=20,
-                   color='gray')
+                   color='lightgray')
             ax.set_xlim(50, 150)  # Set x-axis range
             ax.set_ylim(extent[2], extent[3])
             ax.set_xlabel('X (m)', fontsize=22)
@@ -383,19 +455,24 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
             ax.set_aspect('equal')  # Equal physical scaling: 1m in x = 1m in z
             ax.tick_params(labelsize=18)
 
-    plt.tight_layout()
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    plt.tight_layout(pad=2.0)
+    # Use facecolor='white' for figure background to avoid conflicts
+    plt.savefig(output_file, dpi=300, bbox_inches='tight', facecolor='white')
     plt.close(fig)
 
 
-def plot_all_timesteps(run_dir, output_dir, with_particles=False):
+def plot_all_timesteps(run_dir, output_dir, with_particles=False,
+                       field_name='super_droplets_moisture_number_density',
+                       particle_mass_alpha=False):
     """
-    Plot super-droplet fields from all timesteps in a run directory.
+    Plot fields from all timesteps in a run directory.
 
     Args:
         run_dir: path to the run directory containing plt* subdirectories
         output_dir: directory to save plots (will be created if doesn't exist)
         with_particles: whether to include particle position plots
+        field_name: name of field to plot
+        particle_mass_alpha: whether to use particle mass for transparency
     """
     # Find all plotfiles (directories only, ignore plt.visit file)
     all_plt = glob(os.path.join(run_dir, 'plt*'))
@@ -444,7 +521,9 @@ def plot_all_timesteps(run_dir, output_dir, with_particles=False):
             # Create plot
             output_file = os.path.join(output_dir, f'superdroplets_{plotfile_name}.png')
             plot_superdroplet_fields(ds, time, output_file, domain_extent,
-                                    with_particles=with_particles)
+                                    with_particles=with_particles,
+                                    field_name=field_name,
+                                    particle_mass_alpha=particle_mass_alpha)
 
             print(f"  Saved {output_file}")
             successful += 1
@@ -466,11 +545,14 @@ def plot_all_timesteps(run_dir, output_dir, with_particles=False):
 def main():
     parser = argparse.ArgumentParser(
         description="""
-Plot super-droplet fields from ERF AMR simulations.
+Plot fields from ERF AMR simulations (dry or moist bubble cases).
 
 This script creates 2D (x-z) plots at the y-midplane showing:
-  1. Super-droplet moisture number density with AMR mesh overlay
-  2. (Optional) Particle positions in the domain (with --with-particles)
+  1. Field with AMR mesh overlay (super-droplet number density, qc, etc.)
+  2. (Optional) Particle positions in the domain (-p/--with-particles)
+
+For moist bubble cases, use -f qc to plot cloud water mixing ratio.
+For particle visualization, use --particle-mass-alpha for mass-weighted transparency.
 
 The plots maintain the physical aspect ratio of the simulation domain and are
 suitable for quasi-2D simulations (e.g., ny=4 cells in y-direction).
@@ -478,18 +560,29 @@ suitable for quasi-2D simulations (e.g., ny=4 cells in y-direction).
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # Dry bubble with super-droplet number density
   %(prog)s .run_BF02_dry_bubble_AMR1.matrix.nproc00004
-  %(prog)s .run_BF02_dry_bubble_AMR1.matrix.nproc00004 --with-particles
+
+  # With particles
+  %(prog)s .run_BF02_dry_bubble_AMR1.matrix.nproc00004 -p
+
+  # Moist bubble with qc field
+  %(prog)s .run_BF02_moist_bubble_SDM.matrix.nproc00004 -f qc
+
+  # Moist bubble with particles showing mass-weighted transparency
+  %(prog)s .run_BF02_moist_bubble_SDM.matrix.nproc00004 -f qc -p --particle-mass-alpha
+
+  # Custom output directory
   %(prog)s .run_BF02_dry_bubble_AMR1.matrix.nproc00004 -o custom_plots
 
 Output:
   Creates one PNG file per timestep in the output directory:
-  - superdroplets_plt*.png : 2D plots showing number density with AMR mesh
+  - superdroplets_plt*.png : 2D plots showing field with AMR mesh
                               and optionally particle positions
 
 Plot Layout:
-  Without --with-particles: Single panel showing number density with mesh
-  With --with-particles:    Two panels side-by-side (density left, particles right)
+  Without -p/--with-particles: Single panel showing field with mesh
+  With -p/--with-particles:    Two panels side-by-side (field left, particles right)
 
 Requirements:
   Python packages: yt, numpy, matplotlib
@@ -517,8 +610,13 @@ Notes:
                        help='Path to ERF run directory containing plt* subdirectories')
     parser.add_argument('-o', '--output-dir', dest='output_dir',
                        help='Output directory for plots (default: <run_directory>/plots)')
-    parser.add_argument('--with-particles', action='store_true',
+    parser.add_argument('-p', '--with-particles', action='store_true',
                        help='Include particle position plots in second panel')
+    parser.add_argument('-f', '--field', dest='field_name',
+                       default='super_droplets_moisture_number_density',
+                       help='Field to plot (default: super_droplets_moisture_number_density, for moist cases use: qc)')
+    parser.add_argument('--particle-mass-alpha', action='store_true',
+                       help='Use particle mass for transparency (log scale) in particle plot')
 
     args = parser.parse_args()
 
@@ -534,10 +632,16 @@ Notes:
     print("=" * 70)
     print(f"Processing run directory: {run_dir}")
     print(f"Output directory: {output_dir}")
+    print(f"Field to plot: {args.field_name}")
     print(f"Include particles: {args.with_particles}")
+    if args.with_particles and args.particle_mass_alpha:
+        print(f"Particle transparency: mass-weighted (log scale)")
+    elif args.with_particles:
+        print(f"Particle transparency: uniform")
     print("=" * 70)
 
-    plot_all_timesteps(run_dir, output_dir, with_particles=args.with_particles)
+    plot_all_timesteps(run_dir, output_dir, with_particles=args.with_particles,
+                      field_name=args.field_name, particle_mass_alpha=args.particle_mass_alpha)
 
     print("\nDone!")
 
