@@ -89,75 +89,79 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-# Select run directory from candidates
+# Select run directories to process
 if [[ ${#RUN_DIR_CANDIDATES[@]} -gt 0 ]]; then
-    # Sort and pick the last one (reverse alphabetical = newest)
-    IFS=$'\n' RUN_DIR_SORTED=($(sort -r <<<"${RUN_DIR_CANDIDATES[*]}"))
+    # Sort all matching directories
+    IFS=$'\n' RUN_DIRS=($(sort -r <<<"${RUN_DIR_CANDIDATES[*]}"))
     unset IFS
-    RUN_DIR="${RUN_DIR_SORTED[0]}"
-    if [[ ${#RUN_DIR_CANDIDATES[@]} -gt 1 ]]; then
-        info "Multiple directories match, using: $(basename "$RUN_DIR")"
+    if [[ ${#RUN_DIRS[@]} -gt 1 ]]; then
+        info "Processing ${#RUN_DIRS[@]} directories: ${RUN_DIRS[*]}"
     fi
-fi
-
-# Auto-detect run directory if not specified
-if [[ -z "$RUN_DIR" ]]; then
-    # Look for .run_* directories
+else
+    # Auto-detect run directory if not specified
     RUN_DIRS=($(ls -d "$ROOT_DIR"/.run_* 2>/dev/null | sort -r))
     if [[ ${#RUN_DIRS[@]} -eq 0 ]]; then
         error "No run directories found. Use -r to specify one."
     fi
-    RUN_DIR="${RUN_DIRS[0]}"
-    info "Auto-detected run directory: $(basename "$RUN_DIR")"
+    RUN_DIRS=("${RUN_DIRS[0]}")
+    info "Auto-detected run directory: $(basename "${RUN_DIRS[0]}")"
 fi
 
-# Validate run directory
-if [[ ! -d "$RUN_DIR" ]]; then
-    error "Run directory not found: $RUN_DIR"
-fi
+# Process each run directory
+for RUN_DIR in "${RUN_DIRS[@]}"; do
+    # Validate run directory
+    if [[ ! -d "$RUN_DIR" ]]; then
+        echo "${RED}WARNING:${NC} Run directory not found: $RUN_DIR (skipping)"
+        continue
+    fi
 
-# Check for plotfiles
-PLOTFILES=($(ls -d "$RUN_DIR"/plt* 2>/dev/null))
-if [[ ${#PLOTFILES[@]} -eq 0 ]]; then
-    error "No plotfiles found in $RUN_DIR"
-fi
+    # Check for plotfiles
+    PLOTFILES=($(ls -d "$RUN_DIR"/plt* 2>/dev/null))
+    if [[ ${#PLOTFILES[@]} -eq 0 ]]; then
+        echo "${RED}WARNING:${NC} No plotfiles found in $RUN_DIR (skipping)"
+        continue
+    fi
 
-info "Found ${#PLOTFILES[@]} plotfiles"
+    info "Found ${#PLOTFILES[@]} plotfiles in $(basename "$RUN_DIR")"
 
-# Set default output directory
-if [[ -z "$OUTPUT_DIR" ]]; then
-    OUTPUT_DIR="$RUN_DIR/plots"
-fi
+    # Set output directory (use specified or default)
+    if [[ -n "$OUTPUT_DIR" ]]; then
+        CURRENT_OUTPUT_DIR="$OUTPUT_DIR"
+    else
+        CURRENT_OUTPUT_DIR="$RUN_DIR/plots"
+    fi
 
-# Run the appropriate plotting script
-case "$PLOT_TYPE" in
-    superdroplets)
-        PLOT_SCRIPT="$SCRIPT_DIR/plot_superdroplets.py"
-        if [[ ! -f "$PLOT_SCRIPT" ]]; then
-            error "Plot script not found: $PLOT_SCRIPT"
-        fi
+    # Run the appropriate plotting script
+    case "$PLOT_TYPE" in
+        superdroplets)
+            PLOT_SCRIPT="$SCRIPT_DIR/plot_superdroplets.py"
+            if [[ ! -f "$PLOT_SCRIPT" ]]; then
+                error "Plot script not found: $PLOT_SCRIPT"
+            fi
 
-        info "Plotting fields"
-        info "  Input:  $RUN_DIR"
-        info "  Output: $OUTPUT_DIR"
-        [[ -n "$FIELD_NAME" ]] && info "  Field: $FIELD_NAME"
-        [[ -n "$WITH_PARTICLES" ]] && info "  Particles: enabled"
-        [[ -n "$MASS_ALPHA" ]] && info "  Particle alpha: mass-weighted"
-        [[ -n "$NUM_PROCS" ]] && info "  Parallel processes: $NUM_PROCS"
-        echo
+            info "Plotting fields"
+            info "  Input:  $RUN_DIR"
+            info "  Output: $CURRENT_OUTPUT_DIR"
+            [[ -n "$FIELD_NAME" ]] && info "  Field: $FIELD_NAME"
+            [[ -n "$WITH_PARTICLES" ]] && info "  Particles: enabled"
+            [[ -n "$MASS_ALPHA" ]] && info "  Particle alpha: mass-weighted"
+            [[ -n "$NUM_PROCS" ]] && info "  Parallel processes: $NUM_PROCS"
+            echo
 
-        # Build command with optional arguments
-        CMD="python3 \"$PLOT_SCRIPT\" \"$RUN_DIR\" -o \"$OUTPUT_DIR\""
-        [[ -n "$WITH_PARTICLES" ]] && CMD="$CMD $WITH_PARTICLES"
-        [[ -n "$FIELD_NAME" ]] && CMD="$CMD -f \"$FIELD_NAME\""
-        [[ -n "$MASS_ALPHA" ]] && CMD="$CMD $MASS_ALPHA"
-        [[ -n "$NUM_PROCS" ]] && CMD="$CMD -n $NUM_PROCS"
+            # Build command with optional arguments
+            CMD="python3 \"$PLOT_SCRIPT\" \"$RUN_DIR\" -o \"$CURRENT_OUTPUT_DIR\""
+            [[ -n "$WITH_PARTICLES" ]] && CMD="$CMD $WITH_PARTICLES"
+            [[ -n "$FIELD_NAME" ]] && CMD="$CMD -f \"$FIELD_NAME\""
+            [[ -n "$MASS_ALPHA" ]] && CMD="$CMD $MASS_ALPHA"
+            [[ -n "$NUM_PROCS" ]] && CMD="$CMD -n $NUM_PROCS"
 
-        eval $CMD
-        ;;
-    *)
-        error "Unknown plot type: $PLOT_TYPE"
-        ;;
-esac
+            eval $CMD
+            ;;
+        *)
+            error "Unknown plot type: $PLOT_TYPE"
+            ;;
+    esac
 
-info "Done! Plots saved to $OUTPUT_DIR"
+    info "Done! Plots saved to $CURRENT_OUTPUT_DIR"
+    echo
+done
