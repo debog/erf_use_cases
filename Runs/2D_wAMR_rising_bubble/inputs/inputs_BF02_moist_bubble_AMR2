@@ -109,15 +109,15 @@ prob.qt_init     = 0.02
 prob.eq_pot_temp = 320.0
 
 # Refinement indicators - refine where cloud water is present
-amr.max_level       = 1   # maximum level number allowed (one refinement level)
+amr.max_level       = 2   # maximum level number allowed (one refinement level)
 amr.ref_ratio       = 2 2 # refinement ratio: 2x in x, y, and z directions
-amr.n_error_buf     = 2 2
+amr.n_error_buf     = 4 4
 amr.grid_eff        = 0.9
 erf.regrid_int      = 10  # regrid interval (check every 10 timesteps)
 erf.coupling_type   = "TwoWay"
 erf.refinement_indicators = qc_refine
-erf.qc_refine.max_level = 1
+erf.qc_refine.max_level = 2
 erf.qc_refine.field_name = qc
-erf.qc_refine.value_greater = 1.0e-4  # kg/kg - refine where qc > 1e-4
+erf.qc_refine.value_greater = 5.0e-4  # kg/kg - refine where qc > 1e-4
 erf.qc_refine.start_time = 10.0      # Don't refine before 10s
 

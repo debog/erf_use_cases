@@ -118,6 +118,6 @@ erf.coupling_type   = "TwoWay"
 erf.refinement_indicators = qc_refine
 erf.qc_refine.max_level = 1
 erf.qc_refine.field_name = qc
-erf.qc_refine.value_greater = 1.0e-4  # kg/kg - refine where qc > 1e-4
+erf.qc_refine.value_greater = 5.0e-4  # kg/kg - refine where qc > 1e-4
 erf.qc_refine.start_time = 10.0      # Don't refine before 10s
 

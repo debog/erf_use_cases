@@ -54,7 +54,21 @@ PLOT_TYPE="superdroplets"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -r|--run=*)
-            [[ "$1" == -r ]] && { shift; RUN_DIR="$1"; } || RUN_DIR="${1#*=}" ;;
+            if [[ "$1" == -r ]]; then
+                shift
+                # Take the next argument(s) - could be multiple if wildcard expanded
+                # Collect all non-option arguments
+                RUN_DIR_CANDIDATES=()
+                while [[ $# -gt 0 && "$1" != -* ]]; do
+                    RUN_DIR_CANDIDATES+=("$1")
+                    shift
+                done
+                # Already shifted, so continue without shift at end
+                continue
+            else
+                RUN_DIR_CANDIDATES=("${1#*=}")
+            fi
+            ;;
         -o|--output=*)
             [[ "$1" == -o ]] && { shift; OUTPUT_DIR="$1"; } || OUTPUT_DIR="${1#*=}" ;;
         -p|--with-particles)
@@ -74,6 +88,17 @@ while [[ $# -gt 0 ]]; do
     esac
     shift
 done
+
+# Select run directory from candidates
+if [[ ${#RUN_DIR_CANDIDATES[@]} -gt 0 ]]; then
+    # Sort and pick the last one (reverse alphabetical = newest)
+    IFS=$'\n' RUN_DIR_SORTED=($(sort -r <<<"${RUN_DIR_CANDIDATES[*]}"))
+    unset IFS
+    RUN_DIR="${RUN_DIR_SORTED[0]}"
+    if [[ ${#RUN_DIR_CANDIDATES[@]} -gt 1 ]]; then
+        info "Multiple directories match, using: $(basename "$RUN_DIR")"
+    fi
+fi
 
 # Auto-detect run directory if not specified
 if [[ -z "$RUN_DIR" ]]; then

@@ -53,7 +53,7 @@ def get_midplane_slice(ds, field_name):
     """
     Extract a 2D slice at the y-midplane from a 3D field, properly handling AMR.
 
-    Manually composites data from all AMR levels to ensure coarse regions are filled.
+    Manually composites by extracting data from each grid patch.
 
     Args:
         ds: yt dataset
@@ -62,24 +62,16 @@ def get_midplane_slice(ds, field_name):
     Returns:
         Tuple of (x_coords, z_coords, field_2d) where field_2d is at y-midplane
     """
+    from scipy.ndimage import zoom
+
     max_level = ds.max_level
     base_dims = ds.domain_dimensions
     field_tuple = ('boxlib', field_name)
 
     # Calculate finest resolution dimensions
-    if max_level > 0:
-        dims_finest = base_dims * (2 ** max_level)
-    else:
-        dims_finest = base_dims
+    dims_finest = base_dims * (2 ** max_level) if max_level > 0 else base_dims
 
-    # Initialize output arrays at finest resolution
-    # Start by getting base level data
-    cg0 = ds.covering_grid(level=0,
-                           left_edge=ds.domain_left_edge,
-                           dims=base_dims,
-                           fields=[field_tuple])
-
-    # Get coordinates at finest level (we'll use these for output)
+    # Get coordinates at finest level
     x_fine = np.linspace(float(ds.domain_left_edge[0].to('m').value),
                         float(ds.domain_right_edge[0].to('m').value),
                         dims_finest[0])
@@ -87,50 +79,73 @@ def get_midplane_slice(ds, field_name):
                         float(ds.domain_right_edge[2].to('m').value),
                         dims_finest[2])
 
-    # Get base level data
-    field_3d_base = np.array(cg0[field_tuple])  # Shape: (nx0, ny0, nz0)
-    y_mid_idx = field_3d_base.shape[1] // 2
-    field_2d_base = field_3d_base[:, y_mid_idx, :].T  # (nz0, nx0)
+    # Initialize output array
+    field_2d_composite = np.zeros((dims_finest[2], dims_finest[0]))
 
-    print(f"  Level 0: shape={field_2d_base.shape}, min={np.min(field_2d_base):.2e}, max={np.max(field_2d_base):.2e}")
+    # Track which level owns each cell (starts at -1 = unassigned)
+    level_owner = -np.ones((dims_finest[2], dims_finest[0]), dtype=int)
 
-    # If no AMR, just return base level upsampled
-    if max_level == 0:
-        # Need to match output resolution
-        from scipy.ndimage import zoom
-        zoom_factors = (dims_finest[2] / base_dims[2], dims_finest[0] / base_dims[0])
-        field_2d_fine = zoom(field_2d_base, zoom_factors, order=0)  # Nearest neighbor
-        return x_fine, z_fine, field_2d_fine
+    # Domain info for coordinate conversion
+    domain_left_x = float(ds.domain_left_edge[0].to('m').value)
+    domain_left_z = float(ds.domain_left_edge[2].to('m').value)
+    domain_width_x = float(ds.domain_width[0].to('m').value)
+    domain_width_z = float(ds.domain_width[2].to('m').value)
 
-    # Otherwise, composite all levels
-    # Upsample base level to finest resolution
-    from scipy.ndimage import zoom
-    zoom_factors = (dims_finest[2] / base_dims[2], dims_finest[0] / base_dims[0])
-    field_2d_composite = zoom(field_2d_base, zoom_factors, order=0)
+    # First pass: mark which cells belong to which level (finest wins)
+    for level in range(max_level, -1, -1):  # Process from finest to coarsest for marking
+        grids_at_level = [g for g in ds.index.grids if g.Level == level]
 
-    # Now overlay finer levels
-    for level in range(1, max_level + 1):
-        # Get data at this level
-        dims_at_level = base_dims * (2 ** level)
-        cg = ds.covering_grid(level=level,
-                             left_edge=ds.domain_left_edge,
-                             dims=dims_at_level,
-                             fields=[field_tuple])
+        for grid in grids_at_level:
+            left_x, left_y, left_z = grid.LeftEdge.to('m').value
+            right_x, right_y, right_z = grid.RightEdge.to('m').value
 
-        field_3d_level = np.array(cg[field_tuple])
-        y_mid_idx = field_3d_level.shape[1] // 2
-        field_2d_level = field_3d_level[:, y_mid_idx, :].T  # (nz_level, nx_level)
+            # Convert to indices at finest resolution
+            i_start = int(np.round((left_x - domain_left_x) / domain_width_x * dims_finest[0]))
+            i_end = int(np.round((right_x - domain_left_x) / domain_width_x * dims_finest[0]))
+            k_start = int(np.round((left_z - domain_left_z) / domain_width_z * dims_finest[2]))
+            k_end = int(np.round((right_z - domain_left_z) / domain_width_z * dims_finest[2]))
 
-        print(f"  Level {level}: shape={field_2d_level.shape}, min={np.min(field_2d_level):.2e}, max={np.max(field_2d_level):.2e}")
+            # Mark cells owned by this level (only if not already claimed by finer level)
+            mask = level_owner[k_start:k_end, i_start:i_end] < level
+            level_owner[k_start:k_end, i_start:i_end][mask] = level
 
-        # Upsample if not at finest level yet
-        if level < max_level:
-            zoom_factors = (dims_finest[2] / dims_at_level[2], dims_finest[0] / dims_at_level[0])
-            field_2d_level = zoom(field_2d_level, zoom_factors, order=0)
+    # Second pass: place data only in cells owned by each level
+    for level in range(max_level + 1):
+        grids_at_level = [g for g in ds.index.grids if g.Level == level]
 
-        # Overlay: replace values where this level has non-zero data
-        mask = field_2d_level > 0  # Or use a better criterion
-        field_2d_composite[mask] = field_2d_level[mask]
+        if len(grids_at_level) == 0:
+            continue
+
+        for grid_idx, grid in enumerate(grids_at_level):
+            # Extract data directly from this grid
+            grid_data = np.array(grid[field_tuple])  # Shape: (nx, ny, nz)
+            y_mid_idx = grid_data.shape[1] // 2
+            grid_slice = grid_data[:, y_mid_idx, :].T  # Shape: (nz, nx)
+
+            # Get grid boundaries in physical space
+            left_x, left_y, left_z = grid.LeftEdge.to('m').value
+            right_x, right_y, right_z = grid.RightEdge.to('m').value
+
+            # Convert to indices at finest resolution
+            i_start = int(np.round((left_x - domain_left_x) / domain_width_x * dims_finest[0]))
+            i_end = int(np.round((right_x - domain_left_x) / domain_width_x * dims_finest[0]))
+            k_start = int(np.round((left_z - domain_left_z) / domain_width_z * dims_finest[2]))
+            k_end = int(np.round((right_z - domain_left_z) / domain_width_z * dims_finest[2]))
+
+            # Upsample this grid's data to finest resolution if needed
+            if level < max_level:
+                zoom_factor = 2 ** (max_level - level)
+                grid_slice_upsampled = zoom(grid_slice, zoom_factor, order=0)
+            else:
+                grid_slice_upsampled = grid_slice
+
+            # Place data only where this level owns the cells
+            owner_mask = level_owner[k_start:k_end, i_start:i_end] == level
+
+            # Use np.where or copyto to ensure proper assignment
+            region = field_2d_composite[k_start:k_end, i_start:i_end].copy()
+            region[owner_mask] = grid_slice_upsampled[owner_mask]
+            field_2d_composite[k_start:k_end, i_start:i_end] = region
 
     return x_fine, z_fine, field_2d_composite
 
@@ -332,41 +347,26 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
     # Plot number density as a color field
     extent = [x[0], x[-1], z[0], z[-1]]
 
-    # Set threshold based on field type
-    if field_name == 'qc':
-        threshold = 1e-8  # Don't plot qc below 1e-8
-        use_log = True
+    # Get min/max for colormap
+    field_min = np.min(field_2d)
+    field_max = np.max(field_2d)
+
+    # Use log scale if range is large, but NOT for qc
+    if field_name != 'qc' and field_max > 0 and field_min >= 0 and (field_max / (field_min + 1e-30) > 100):
+        from matplotlib.colors import LogNorm
+        # For log scale, need to handle zeros
+        field_plot = np.copy(field_2d)
+        nonzero_min = np.min(field_2d[field_2d > 0]) if np.any(field_2d > 0) else field_max * 1e-10
+        # Replace zeros with something much smaller than nonzero_min so they appear at bottom of colorscale
+        vmin = nonzero_min / 100.0  # Set vmin lower than actual minimum
+        field_plot[field_plot <= 0] = vmin  # Set zeros to vmin
+        vmax = field_max
+        im = ax.imshow(field_plot, extent=extent, aspect='auto', origin='lower',
+                      cmap='coolwarm', interpolation='bilinear', norm=LogNorm(vmin=vmin, vmax=vmax))
     else:
-        threshold = 1e-15  # General threshold for floating point
-        use_log = False  # Auto-detect based on range
-
-    has_data = np.any(field_2d > threshold)
-
-    # Mask zero/small values for better visualization
-    field_plot = np.copy(field_2d)
-    field_plot[field_plot < threshold] = np.nan
-
-    if has_data:
-        # Use log scale if requested or if range is large
-        vmin = np.nanmin(field_plot)
-        vmax = np.nanmax(field_plot)
-
-        # Use coolwarm colormap (blue=low, white=mid, red=high)
-        if use_log or (vmax > 0 and vmin > 0 and (vmax / vmin > 100)):
-            from matplotlib.colors import LogNorm
-            im = ax.imshow(field_plot, extent=extent, aspect='auto', origin='lower',
-                          cmap='coolwarm', interpolation='bilinear', norm=LogNorm(vmin=vmin, vmax=vmax))
-        else:
-            im = ax.imshow(field_plot, extent=extent, aspect='auto', origin='lower',
-                          cmap='coolwarm', interpolation='bilinear', vmin=vmin, vmax=vmax)
-    else:
-        # No data - show empty field with neutral color
-        im = ax.imshow(np.zeros_like(field_2d), extent=extent, aspect='auto', origin='lower',
-                      cmap='coolwarm', interpolation='bilinear', vmin=0, vmax=1)
-        # Add text overlay
-        ax.text(0.5, 0.5, 'No droplet data\n(all zeros)',
-               ha='center', va='center', transform=ax.transAxes, fontsize=20,
-               color='dimgray', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+        # Linear scale
+        im = ax.imshow(field_2d, extent=extent, aspect='auto', origin='lower',
+                      cmap='coolwarm', interpolation='bilinear', vmin=field_min, vmax=field_max)
 
     # Add colorbar with better styling
     cbar = plt.colorbar(im, ax=ax, pad=0.02, fraction=0.046)
@@ -478,12 +478,23 @@ def process_single_plotfile(args):
                        field_name, particle_mass_alpha, i, total)
 
     Returns:
-        tuple of (success, plotfile_name, error_message)
+        tuple of (success, plotfile_name, error_message, skipped)
     """
     pltfile, output_dir, domain_extent, with_particles, field_name, particle_mass_alpha, i, total = args
     plotfile_name = os.path.basename(pltfile)
 
     try:
+        # Check if output already exists and is newer than input
+        output_file = os.path.join(output_dir, f'superdroplets_{plotfile_name}.png')
+
+        if os.path.exists(output_file):
+            output_mtime = os.path.getmtime(output_file)
+            pltfile_mtime = os.path.getmtime(pltfile)
+
+            if output_mtime > pltfile_mtime:
+                print(f"\nSkipping {plotfile_name} ({i+1}/{total}) - plot is up to date")
+                return (True, plotfile_name, None, True)
+
         print(f"\nProcessing {plotfile_name} ({i+1}/{total})...")
 
         # Load data
@@ -491,20 +502,19 @@ def process_single_plotfile(args):
         time = float(ds.current_time)
 
         # Create plot
-        output_file = os.path.join(output_dir, f'superdroplets_{plotfile_name}.png')
         plot_superdroplet_fields(ds, time, output_file, domain_extent,
                                 with_particles=with_particles,
                                 field_name=field_name,
                                 particle_mass_alpha=particle_mass_alpha)
 
         print(f"  Saved {output_file}")
-        return (True, plotfile_name, None)
+        return (True, plotfile_name, None, False)
 
     except (OverflowError, RuntimeError, ValueError) as e:
         error_msg = f"{type(e).__name__}: {e}"
         print(f"  ERROR: Failed to process {plotfile_name}: {error_msg}")
         print(f"  Skipping this timestep and continuing...")
-        return (False, plotfile_name, error_msg)
+        return (False, plotfile_name, error_msg, False)
 
 
 def plot_all_timesteps(run_dir, output_dir, with_particles=False,
@@ -544,13 +554,19 @@ def plot_all_timesteps(run_dir, output_dir, with_particles=False,
     print(f"Domain extent: {domain_extent[0]:.1f} m x {domain_extent[1]:.1f} m x {domain_extent[2]:.1f} m")
     print(f"Max AMR level: {ds.max_level}")
 
+    # Check if requested field exists
+    if field_name not in available_vars:
+        print(f"ERROR: Field '{field_name}' not found in plotfiles!")
+        print(f"Available fields: {available_vars}")
+        return
+
     # Check for super-droplet fields
-    sd_fields = [f for f in available_vars if 'droplet' in f.lower() or 'moisture' in f.lower()]
+    sd_fields = [f for f in available_vars if 'droplet' in f.lower() or 'moisture' in f.lower() or 'qc' in f.lower() or 'qv' in f.lower()]
     if sd_fields:
-        print(f"Super-droplet/moisture fields found: {sd_fields}")
+        print(f"Relevant fields found: {sd_fields}")
     else:
-        print("WARNING: No super-droplet or moisture fields found in plotfiles!")
-        print(f"Available fields (first 10): {available_vars[:10]}")
+        print("WARNING: No droplet/moisture/qc fields found in plotfiles!")
+        print(f"Available fields (first 20): {available_vars[:20]}")
 
     # Prepare arguments for parallel processing
     total = len(plotfiles)
@@ -570,11 +586,15 @@ def plot_all_timesteps(run_dir, output_dir, with_particles=False,
         results = [process_single_plotfile(args) for args in args_list]
 
     # Collect results
-    successful = sum(1 for success, _, _ in results if success)
-    failed = [(name, err) for success, name, err in results if not success]
+    successful = sum(1 for success, _, _, _ in results if success)
+    skipped = sum(1 for success, _, _, skip in results if success and skip)
+    failed = [(name, err) for success, name, err, _ in results if not success]
 
     print(f"\n{'='*70}")
-    print(f"Summary: {successful}/{len(plotfiles)} plots created successfully")
+    print(f"Summary: {successful}/{len(plotfiles)} plots successful")
+    if skipped > 0:
+        print(f"  - {skipped} skipped (already up to date)")
+        print(f"  - {successful - skipped} newly created")
     if failed:
         print(f"Failed plotfiles ({len(failed)}):")
         for name, err in failed[:5]:  # Show first 5
