@@ -102,12 +102,14 @@ super_droplets_moisture.initial_aerosol_min_mass_NaCl = 1.0e-22 #kg
 super_droplets_moisture.initial_aerosol_mean_mass_NaCl = 1.0e-19 #kg
 super_droplets_moisture.initial_aerosol_max_mass_NaCl = 1.0e-18 #kg
 super_droplets_moisture.initial_number_density = 1.0e7 #m^{-3}
-super_droplets_moisture.initial_particles_per_cell = 256
+super_droplets_moisture.initial_particles_per_cell = 512
 
 # Refinement indicators - refine where cloud water is present
-amr.max_level       = 1       # maximum level number allowed (one refinement level)
-amr.ref_ratio       = 2 1 2   # refinement ratio: 2x in x, y, and z directions
-erf.regrid_int      = 10      # regrid interval (check every 10 timesteps)
+amr.max_level       = 1   # maximum level number allowed (one refinement level)
+amr.ref_ratio       = 2   # refinement ratio: 2x in x, y, and z directions
+amr.n_error_buf     = 5
+amr.grid_eff        = 0.9
+erf.regrid_int      = 10  # regrid interval (check every 10 timesteps)
 erf.coupling_type   = "TwoWay"
 erf.refinement_indicators = sdm_count_refine
 erf.sdm_count_refine.max_level = 1
