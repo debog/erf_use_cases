@@ -12,6 +12,7 @@
 #   -f, --field=FIELD     Field to plot (default: super_droplets_moisture_number_density)
 #                         For moist bubble use: qc
 #   -m, --mass-alpha      Use particle mass for transparency (log scale)
+#   -n, --num-procs=N     Number of parallel processes (default: 1, use 0 for all CPUs)
 #   -t, --type=TYPE       Plot type: superdroplets (default)
 #   -h, --help            Show this help message
 #
@@ -47,6 +48,7 @@ OUTPUT_DIR=""
 WITH_PARTICLES=""
 FIELD_NAME=""
 MASS_ALPHA=""
+NUM_PROCS=""
 PLOT_TYPE="superdroplets"
 
 while [[ $# -gt 0 ]]; do
@@ -61,6 +63,8 @@ while [[ $# -gt 0 ]]; do
             [[ "$1" == -f ]] && { shift; FIELD_NAME="$1"; } || FIELD_NAME="${1#*=}" ;;
         -m|--mass-alpha)
             MASS_ALPHA="--particle-mass-alpha" ;;
+        -n|--num-procs=*)
+            [[ "$1" == -n ]] && { shift; NUM_PROCS="$1"; } || NUM_PROCS="${1#*=}" ;;
         -t|--type=*)
             [[ "$1" == -t ]] && { shift; PLOT_TYPE="$1"; } || PLOT_TYPE="${1#*=}" ;;
         -h|--help)
@@ -114,6 +118,7 @@ case "$PLOT_TYPE" in
         [[ -n "$FIELD_NAME" ]] && info "  Field: $FIELD_NAME"
         [[ -n "$WITH_PARTICLES" ]] && info "  Particles: enabled"
         [[ -n "$MASS_ALPHA" ]] && info "  Particle alpha: mass-weighted"
+        [[ -n "$NUM_PROCS" ]] && info "  Parallel processes: $NUM_PROCS"
         echo
 
         # Build command with optional arguments
@@ -121,6 +126,7 @@ case "$PLOT_TYPE" in
         [[ -n "$WITH_PARTICLES" ]] && CMD="$CMD $WITH_PARTICLES"
         [[ -n "$FIELD_NAME" ]] && CMD="$CMD -f \"$FIELD_NAME\""
         [[ -n "$MASS_ALPHA" ]] && CMD="$CMD $MASS_ALPHA"
+        [[ -n "$NUM_PROCS" ]] && CMD="$CMD -n $NUM_PROCS"
 
         eval $CMD
         ;;

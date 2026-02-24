@@ -10,11 +10,11 @@ Usage:
     python plot_superdroplets.py <run_directory> [options]
 
 Examples:
-    # Dry bubble
-    python plot_superdroplets.py .run_BF02_dry_bubble_AMR1.matrix.nproc00004 -p
+    # Dry bubble with 8 parallel processes
+    python plot_superdroplets.py .run_BF02_dry_bubble_AMR1.matrix.nproc00004 -p -n 8
 
-    # Moist bubble with qc and mass-weighted particles
-    python plot_superdroplets.py .run_BF02_moist_bubble_SDM.matrix.nproc00004 -f qc -p --particle-mass-alpha
+    # Moist bubble with qc and mass-weighted particles, use all CPUs
+    python plot_superdroplets.py .run_BF02_moist_bubble_SDM.matrix.nproc00004 -f qc -p --particle-mass-alpha -n 0
 """
 
 import yt
@@ -26,6 +26,8 @@ import sys
 import os
 import argparse
 from glob import glob
+from multiprocessing import Pool, cpu_count
+from functools import partial
 
 # Disable yt info prints
 yt.set_log_level("error")
@@ -330,8 +332,14 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
     # Plot number density as a color field
     extent = [x[0], x[-1], z[0], z[-1]]
 
-    # Check if we have any non-zero data (use small threshold for floating point)
-    threshold = 1e-15  # Increased threshold for better detection
+    # Set threshold based on field type
+    if field_name == 'qc':
+        threshold = 1e-8  # Don't plot qc below 1e-8
+        use_log = True
+    else:
+        threshold = 1e-15  # General threshold for floating point
+        use_log = False  # Auto-detect based on range
+
     has_data = np.any(field_2d > threshold)
 
     # Mask zero/small values for better visualization
@@ -339,12 +347,12 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
     field_plot[field_plot < threshold] = np.nan
 
     if has_data:
-        # Use log scale if range is large
+        # Use log scale if requested or if range is large
         vmin = np.nanmin(field_plot)
         vmax = np.nanmax(field_plot)
 
         # Use coolwarm colormap (blue=low, white=mid, red=high)
-        if vmax > 0 and vmin > 0 and (vmax / vmin > 100):
+        if use_log or (vmax > 0 and vmin > 0 and (vmax / vmin > 100)):
             from matplotlib.colors import LogNorm
             im = ax.imshow(field_plot, extent=extent, aspect='auto', origin='lower',
                           cmap='coolwarm', interpolation='bilinear', norm=LogNorm(vmin=vmin, vmax=vmax))
@@ -461,9 +469,47 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
     plt.close(fig)
 
 
+def process_single_plotfile(args):
+    """
+    Worker function to process a single plotfile.
+
+    Args:
+        args: tuple of (pltfile, output_dir, domain_extent, with_particles,
+                       field_name, particle_mass_alpha, i, total)
+
+    Returns:
+        tuple of (success, plotfile_name, error_message)
+    """
+    pltfile, output_dir, domain_extent, with_particles, field_name, particle_mass_alpha, i, total = args
+    plotfile_name = os.path.basename(pltfile)
+
+    try:
+        print(f"\nProcessing {plotfile_name} ({i+1}/{total})...")
+
+        # Load data
+        ds = yt.load(pltfile)
+        time = float(ds.current_time)
+
+        # Create plot
+        output_file = os.path.join(output_dir, f'superdroplets_{plotfile_name}.png')
+        plot_superdroplet_fields(ds, time, output_file, domain_extent,
+                                with_particles=with_particles,
+                                field_name=field_name,
+                                particle_mass_alpha=particle_mass_alpha)
+
+        print(f"  Saved {output_file}")
+        return (True, plotfile_name, None)
+
+    except (OverflowError, RuntimeError, ValueError) as e:
+        error_msg = f"{type(e).__name__}: {e}"
+        print(f"  ERROR: Failed to process {plotfile_name}: {error_msg}")
+        print(f"  Skipping this timestep and continuing...")
+        return (False, plotfile_name, error_msg)
+
+
 def plot_all_timesteps(run_dir, output_dir, with_particles=False,
                        field_name='super_droplets_moisture_number_density',
-                       particle_mass_alpha=False):
+                       particle_mass_alpha=False, num_procs=1):
     """
     Plot fields from all timesteps in a run directory.
 
@@ -473,6 +519,7 @@ def plot_all_timesteps(run_dir, output_dir, with_particles=False,
         with_particles: whether to include particle position plots
         field_name: name of field to plot
         particle_mass_alpha: whether to use particle mass for transparency
+        num_procs: number of parallel processes to use (1 = serial)
     """
     # Find all plotfiles (directories only, ignore plt.visit file)
     all_plt = glob(os.path.join(run_dir, 'plt*'))
@@ -505,39 +552,35 @@ def plot_all_timesteps(run_dir, output_dir, with_particles=False,
         print("WARNING: No super-droplet or moisture fields found in plotfiles!")
         print(f"Available fields (first 10): {available_vars[:10]}")
 
-    # Process each plotfile
-    successful = 0
-    failed = []
+    # Prepare arguments for parallel processing
+    total = len(plotfiles)
+    args_list = [
+        (pltfile, output_dir, domain_extent, with_particles, field_name,
+         particle_mass_alpha, i, total)
+        for i, pltfile in enumerate(plotfiles)
+    ]
 
-    for i, pltfile in enumerate(plotfiles):
-        plotfile_name = os.path.basename(pltfile)
-        print(f"\nProcessing {plotfile_name} ({i+1}/{len(plotfiles)})...")
+    # Process plotfiles
+    if num_procs > 1:
+        print(f"\nUsing {num_procs} parallel processes...")
+        with Pool(processes=num_procs) as pool:
+            results = pool.map(process_single_plotfile, args_list)
+    else:
+        print(f"\nProcessing sequentially (use -n/--num-procs for parallelization)...")
+        results = [process_single_plotfile(args) for args in args_list]
 
-        try:
-            # Load data
-            ds = yt.load(pltfile)
-            time = float(ds.current_time)
-
-            # Create plot
-            output_file = os.path.join(output_dir, f'superdroplets_{plotfile_name}.png')
-            plot_superdroplet_fields(ds, time, output_file, domain_extent,
-                                    with_particles=with_particles,
-                                    field_name=field_name,
-                                    particle_mass_alpha=particle_mass_alpha)
-
-            print(f"  Saved {output_file}")
-            successful += 1
-        except (OverflowError, RuntimeError, ValueError) as e:
-            print(f"  ERROR: Failed to process {plotfile_name}: {type(e).__name__}: {e}")
-            print(f"  Skipping this timestep and continuing...")
-            failed.append(plotfile_name)
-            continue
+    # Collect results
+    successful = sum(1 for success, _, _ in results if success)
+    failed = [(name, err) for success, name, err in results if not success]
 
     print(f"\n{'='*70}")
     print(f"Summary: {successful}/{len(plotfiles)} plots created successfully")
     if failed:
-        print(f"Failed plotfiles: {', '.join(failed)}")
-        print(f"Note: This may be due to a yt bug with certain AMR structures.")
+        print(f"Failed plotfiles ({len(failed)}):")
+        for name, err in failed[:5]:  # Show first 5
+            print(f"  - {name}: {err}")
+        if len(failed) > 5:
+            print(f"  ... and {len(failed)-5} more")
     print(f"Output directory: {output_dir}/")
     print(f"{'='*70}")
 
@@ -563,14 +606,14 @@ Examples:
   # Dry bubble with super-droplet number density
   %(prog)s .run_BF02_dry_bubble_AMR1.matrix.nproc00004
 
-  # With particles
-  %(prog)s .run_BF02_dry_bubble_AMR1.matrix.nproc00004 -p
+  # With particles, using 8 parallel processes
+  %(prog)s .run_BF02_dry_bubble_AMR1.matrix.nproc00004 -p -n 8
 
   # Moist bubble with qc field
   %(prog)s .run_BF02_moist_bubble_SDM.matrix.nproc00004 -f qc
 
-  # Moist bubble with particles showing mass-weighted transparency
-  %(prog)s .run_BF02_moist_bubble_SDM.matrix.nproc00004 -f qc -p --particle-mass-alpha
+  # Moist bubble with particles showing mass-weighted transparency, use all CPUs
+  %(prog)s .run_BF02_moist_bubble_SDM.matrix.nproc00004 -f qc -p --particle-mass-alpha -n 0
 
   # Custom output directory
   %(prog)s .run_BF02_dry_bubble_AMR1.matrix.nproc00004 -o custom_plots
@@ -595,8 +638,9 @@ Technical Details:
   - Bilinear interpolation for smooth rendering
   - Computational mesh shown as thin dark lines (#222222, linewidth=0.3, alpha=0.8)
   - All cell edges rendered at all AMR levels
-  - Particles read from super_droplets_<step>.txt if available
+  - Particles read from plotfile datasets
   - Physical aspect ratio preserved with ax.set_aspect('equal')
+  - Supports parallel processing across plotfiles using multiprocessing
 
 Notes:
   - This is designed for 2D cases (few cells in y-direction)
@@ -617,6 +661,8 @@ Notes:
                        help='Field to plot (default: super_droplets_moisture_number_density, for moist cases use: qc)')
     parser.add_argument('--particle-mass-alpha', action='store_true',
                        help='Use particle mass for transparency (log scale) in particle plot')
+    parser.add_argument('-n', '--num-procs', dest='num_procs', type=int, default=1,
+                       help='Number of parallel processes to use (default: 1, use 0 for all available CPUs)')
 
     args = parser.parse_args()
 
@@ -625,6 +671,15 @@ Notes:
 
     if not os.path.isdir(run_dir):
         print(f"Error: {run_dir} is not a valid directory")
+        sys.exit(1)
+
+    # Handle num_procs = 0 (use all available CPUs)
+    num_procs = args.num_procs
+    if num_procs == 0:
+        num_procs = cpu_count()
+        print(f"Using all available CPUs: {num_procs}")
+    elif num_procs < 0:
+        print(f"Error: num_procs must be >= 0 (got {num_procs})")
         sys.exit(1)
 
     print("=" * 70)
@@ -638,10 +693,13 @@ Notes:
         print(f"Particle transparency: mass-weighted (log scale)")
     elif args.with_particles:
         print(f"Particle transparency: uniform")
+    if num_procs > 1:
+        print(f"Parallel processes: {num_procs}")
     print("=" * 70)
 
     plot_all_timesteps(run_dir, output_dir, with_particles=args.with_particles,
-                      field_name=args.field_name, particle_mass_alpha=args.particle_mass_alpha)
+                      field_name=args.field_name, particle_mass_alpha=args.particle_mass_alpha,
+                      num_procs=num_procs)
 
     print("\nDone!")
 

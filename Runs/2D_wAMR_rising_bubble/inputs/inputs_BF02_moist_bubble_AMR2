@@ -84,7 +84,7 @@ erf.alpha_C          = 0.0
 #sdm parameters
 super_droplets_moisture.initial_distribution_type = "uniform"
 super_droplets_moisture.diagnostics_interval = 100
-super_droplets_moisture.include_coalescence = false 
+super_droplets_moisture.radius_raindrop = 1.0       
 super_droplets_moisture.multiplicity_type = "constant"
 super_droplets_moisture.recycle_particles = false
 super_droplets_moisture.aerosols = NaCl
@@ -110,8 +110,8 @@ prob.eq_pot_temp = 320.0
 
 # Refinement indicators - refine where cloud water is present
 amr.max_level       = 1   # maximum level number allowed (one refinement level)
-amr.ref_ratio       = 2   # refinement ratio: 2x in x, y, and z directions
-amr.n_error_buf     = 2
+amr.ref_ratio       = 2 2 # refinement ratio: 2x in x, y, and z directions
+amr.n_error_buf     = 2 2
 amr.grid_eff        = 0.9
 erf.regrid_int      = 10  # regrid interval (check every 10 timesteps)
 erf.coupling_type   = "TwoWay"
