@@ -49,6 +49,8 @@ def get_midplane_slice(ds, field_name):
     """
     Extract a 2D slice at the y-midplane from a 3D field, properly handling AMR.
 
+    Manually composites data from all AMR levels to ensure coarse regions are filled.
+
     Args:
         ds: yt dataset
         field_name: name of the field to extract
@@ -56,32 +58,77 @@ def get_midplane_slice(ds, field_name):
     Returns:
         Tuple of (x_coords, z_coords, field_2d) where field_2d is at y-midplane
     """
-    # Use an arbitrary grid to sample the AMR hierarchy at finest resolution
     max_level = ds.max_level
-
-    # Calculate dimensions at max level (assuming ref_ratio=2)
     base_dims = ds.domain_dimensions
-    ref_ratio = 2 ** max_level
-    dims_at_max = base_dims * ref_ratio
+    field_tuple = ('boxlib', field_name)
 
-    # Create an arbitrary grid at max level - this samples the AMR hierarchy
-    ag = ds.arbitrary_grid(left_edge=ds.domain_left_edge,
-                           right_edge=ds.domain_right_edge,
-                           dims=dims_at_max)
+    # Calculate finest resolution dimensions
+    if max_level > 0:
+        dims_finest = base_dims * (2 ** max_level)
+    else:
+        dims_finest = base_dims
 
-    # Get coordinates (convert from cm to m)
-    x = np.array(ag['x'][:, 0, 0]) / 1e2  # cm to m
-    y = np.array(ag['y'][0, :, 0]) / 1e2
-    z = np.array(ag['z'][0, 0, :]) / 1e2
+    # Initialize output arrays at finest resolution
+    # Start by getting base level data
+    cg0 = ds.covering_grid(level=0,
+                           left_edge=ds.domain_left_edge,
+                           dims=base_dims,
+                           fields=[field_tuple])
 
-    # Get 3D field
-    field_3d = np.array(ag[('boxlib', field_name)])  # Shape: (nx, ny, nz)
+    # Get coordinates at finest level (we'll use these for output)
+    x_fine = np.linspace(float(ds.domain_left_edge[0].to('m').value),
+                        float(ds.domain_right_edge[0].to('m').value),
+                        dims_finest[0])
+    z_fine = np.linspace(float(ds.domain_left_edge[2].to('m').value),
+                        float(ds.domain_right_edge[2].to('m').value),
+                        dims_finest[2])
 
-    # Extract midplane (middle index along y)
-    midplane_idx = len(y) // 2
-    field_2d = field_3d[:, midplane_idx, :].T  # Transpose to (nz, nx) for plotting
+    # Get base level data
+    field_3d_base = np.array(cg0[field_tuple])  # Shape: (nx0, ny0, nz0)
+    y_mid_idx = field_3d_base.shape[1] // 2
+    field_2d_base = field_3d_base[:, y_mid_idx, :].T  # (nz0, nx0)
 
-    return x, z, field_2d
+    print(f"  Level 0: shape={field_2d_base.shape}, min={np.min(field_2d_base):.2e}, max={np.max(field_2d_base):.2e}")
+
+    # If no AMR, just return base level upsampled
+    if max_level == 0:
+        # Need to match output resolution
+        from scipy.ndimage import zoom
+        zoom_factors = (dims_finest[2] / base_dims[2], dims_finest[0] / base_dims[0])
+        field_2d_fine = zoom(field_2d_base, zoom_factors, order=0)  # Nearest neighbor
+        return x_fine, z_fine, field_2d_fine
+
+    # Otherwise, composite all levels
+    # Upsample base level to finest resolution
+    from scipy.ndimage import zoom
+    zoom_factors = (dims_finest[2] / base_dims[2], dims_finest[0] / base_dims[0])
+    field_2d_composite = zoom(field_2d_base, zoom_factors, order=0)
+
+    # Now overlay finer levels
+    for level in range(1, max_level + 1):
+        # Get data at this level
+        dims_at_level = base_dims * (2 ** level)
+        cg = ds.covering_grid(level=level,
+                             left_edge=ds.domain_left_edge,
+                             dims=dims_at_level,
+                             fields=[field_tuple])
+
+        field_3d_level = np.array(cg[field_tuple])
+        y_mid_idx = field_3d_level.shape[1] // 2
+        field_2d_level = field_3d_level[:, y_mid_idx, :].T  # (nz_level, nx_level)
+
+        print(f"  Level {level}: shape={field_2d_level.shape}, min={np.min(field_2d_level):.2e}, max={np.max(field_2d_level):.2e}")
+
+        # Upsample if not at finest level yet
+        if level < max_level:
+            zoom_factors = (dims_finest[2] / dims_at_level[2], dims_finest[0] / dims_at_level[0])
+            field_2d_level = zoom(field_2d_level, zoom_factors, order=0)
+
+        # Overlay: replace values where this level has non-zero data
+        mask = field_2d_level > 0  # Or use a better criterion
+        field_2d_composite[mask] = field_2d_level[mask]
+
+    return x_fine, z_fine, field_2d_composite
 
 
 def get_amr_mesh_lines(ds):
@@ -127,45 +174,60 @@ def get_amr_mesh_lines(ds):
     return mesh_lines
 
 
-def read_particle_file(run_dir, plotfile_name):
+def read_particle_positions(ds):
     """
-    Read super-droplet particle positions from text file.
+    Read super-droplet particle positions from plotfile dataset.
 
     Args:
-        run_dir: run directory path
-        plotfile_name: name of the plotfile (e.g., 'plt00100')
+        ds: yt dataset
 
     Returns:
-        Numpy array of particle positions (N, 3) or None if file not found
+        Numpy array of particle positions (N, 3) in meters, or None if no particles
     """
-    # ERF super-droplet output format: super_droplets_<step>.txt
-    # Extract step number from plotfile name
-    step = plotfile_name.replace('plt', '')
-    particle_file = os.path.join(run_dir, f'super_droplets_{step}.txt')
-
-    if not os.path.exists(particle_file):
-        return None
+    pcname = "super_droplets_moisture"
 
     try:
-        # Read particle file (assuming format: x y z ...)
-        # Skip header if present
-        data = np.loadtxt(particle_file, comments='#')
-        if len(data.shape) == 1:
-            data = data.reshape(1, -1)
+        # Check if particle data exists
+        particle_fields = [name for (_, name) in ds.field_list if name.startswith("particle_")]
 
-        # Extract x, y, z coordinates (first 3 columns)
-        if data.shape[1] >= 3:
-            return data[:, :3]
-        else:
+        if not particle_fields:
+            print(f"  No particle data found in plotfile")
             return None
+
+        # Get particle position field names
+        pos_fields = [
+            (pcname, "particle_position_x"),
+            (pcname, "particle_position_y"),
+            (pcname, "particle_position_z")
+        ]
+
+        # Load particle data using covering grid
+        cg = ds.covering_grid(0, ds.domain_left_edge, ds.domain_dimensions, fields=pos_fields)
+
+        # Extract positions
+        x_particles = np.array(cg[pos_fields[0]])  # In code units (cm)
+        y_particles = np.array(cg[pos_fields[1]])
+        z_particles = np.array(cg[pos_fields[2]])
+
+        # Convert from cm to m
+        x_particles = x_particles / 100.0
+        y_particles = y_particles / 100.0
+        z_particles = z_particles / 100.0
+
+        # Stack into (N, 3) array
+        positions = np.column_stack([x_particles, y_particles, z_particles])
+
+        print(f"  Read {len(positions)} particles from plotfile")
+
+        return positions
+
     except Exception as e:
-        print(f"Warning: Could not read particle file {particle_file}: {e}")
+        print(f"  WARNING: Could not read particles from plotfile: {e}")
         return None
 
 
 def plot_superdroplet_fields(ds, time, output_file, domain_extent,
-                             with_particles=False, run_dir=None,
-                             plotfile_name=None):
+                             with_particles=False):
     """
     Create a 2-panel plot showing:
       1. Super-droplet moisture number density with AMR mesh
@@ -177,24 +239,26 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
         output_file: path to save the plot
         domain_extent: tuple of (x_extent, y_extent, z_extent) in meters
         with_particles: whether to include particle plot
-        run_dir: run directory (needed for particle files)
-        plotfile_name: name of plotfile (needed for particle files)
     """
     # Set up figure with proper aspect ratio
-    x_extent_m = domain_extent[0]
-    z_extent_m = domain_extent[2]
+    # Plot region: x=[50, 150] (100m), z=[0, 100] (100m)
+    plot_x_extent = 100.0  # 150 - 50
+    plot_z_extent = domain_extent[2]  # Full z extent
 
-    # For figure size: width should be proportional to x_extent, height to z_extent
-    # Use equal physical scaling: 1 meter in x = 1 meter in z on screen
-    fig_height = 10
-    aspect_ratio = x_extent_m / z_extent_m
-    single_width = fig_height * aspect_ratio
+    # For figure size: match the plot region aspect ratio
+    plot_aspect = plot_x_extent / plot_z_extent
 
-    # Create subplots
-    ncols = 2 if with_particles else 1
-    fig, axes = plt.subplots(1, ncols, figsize=(single_width * ncols, fig_height))
-
-    if ncols == 1:
+    # Create subplots - side-by-side if particles are included
+    if with_particles:
+        ncols = 2
+        fig_height = 12
+        fig_width = fig_height * plot_aspect * ncols
+        fig, axes = plt.subplots(1, ncols, figsize=(fig_width, fig_height))
+        axes = list(axes)  # Make it iterable
+    else:
+        fig_height = 12
+        fig_width = fig_height * plot_aspect
+        fig, axes = plt.subplots(1, 1, figsize=(fig_width, fig_height))
         axes = [axes]  # Make it iterable
 
     # Check if number density field exists
@@ -202,13 +266,24 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
     field_name = 'super_droplets_moisture_number_density'
 
     if field_name not in available_fields:
-        print(f"Warning: {field_name} not found in dataset")
-        print(f"Available fields: {available_fields}")
+        print(f"  WARNING: {field_name} not found in dataset")
+        print(f"  Available fields containing 'droplet': {[f for f in available_fields if 'droplet' in f.lower()]}")
         plt.close(fig)
         return
 
     # Extract 2D slice at midplane
-    x, z, field_2d = get_midplane_slice(ds, field_name)
+    try:
+        x, z, field_2d = get_midplane_slice(ds, field_name)
+    except Exception as e:
+        print(f"  ERROR extracting slice: {e}")
+        plt.close(fig)
+        return
+
+    # Debug: check field statistics
+    field_min = np.nanmin(field_2d) if np.any(np.isfinite(field_2d)) else np.nan
+    field_max = np.nanmax(field_2d) if np.any(np.isfinite(field_2d)) else np.nan
+    field_nonzero = np.sum(field_2d > 0)
+    print(f"  Field stats: min={field_min:.2e}, max={field_max:.2e}, nonzero cells={field_nonzero}")
 
     # Get AMR mesh lines
     mesh_lines = get_amr_mesh_lines(ds)
@@ -221,12 +296,13 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
     # Plot number density as a color field
     extent = [x[0], x[-1], z[0], z[-1]]
 
-    # Mask zero values for better visualization
-    field_plot = np.copy(field_2d)
-    field_plot[field_plot == 0] = np.nan
+    # Check if we have any non-zero data (use small threshold for floating point)
+    threshold = 1e-15  # Increased threshold for better detection
+    has_data = np.any(field_2d > threshold)
 
-    # Check if we have any non-zero data
-    has_data = np.any(np.isfinite(field_plot))
+    # Mask zero/small values for better visualization
+    field_plot = np.copy(field_2d)
+    field_plot[field_plot < threshold] = np.nan
 
     if has_data:
         # Use log scale if range is large
@@ -262,49 +338,44 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
     ax.set_xlabel('X (m)', fontsize=22)
     ax.set_ylabel('Z (m)', fontsize=22)
     ax.set_title(f'Super-droplet number density, t = {format_time(time)}', fontsize=26)
+    ax.set_xlim(50, 150)  # Set x-axis range
     ax.set_aspect('equal')  # Equal physical scaling: 1m in x = 1m in z
     ax.tick_params(labelsize=18)
 
     # ========================================================================
-    # Panel 2 (optional): Particle positions
+    # Panel 2 (right): Particle positions (optional)
     # ========================================================================
     if with_particles:
-        ax = axes[1]
+        ax = axes[1]  # Second column
 
-        # Try to read particle positions
-        particles = None
-        if run_dir and plotfile_name:
-            particles = read_particle_file(run_dir, plotfile_name)
+        # Try to read particle positions from the dataset
+        particles = read_particle_positions(ds)
 
         if particles is not None and len(particles) > 0:
-            # Extract x and z coordinates (y-midplane projection)
+            # Extract x and z coordinates
             x_particles = particles[:, 0]
             y_particles = particles[:, 1]
             z_particles = particles[:, 2]
 
-            # Plot particles as scatter
-            ax.scatter(x_particles, z_particles, s=1, c='blue', alpha=0.5,
+            # Plot particles as dots/points (no mesh overlay)
+            ax.scatter(x_particles, z_particles, s=0.1, c='black', alpha=0.3,
                       edgecolors='none', rasterized=True)
 
-            ax.set_xlim(extent[0], extent[1])
+            ax.set_xlim(50, 150)  # Set x-axis range
             ax.set_ylim(extent[2], extent[3])
             ax.set_xlabel('X (m)', fontsize=22)
             ax.set_ylabel('Z (m)', fontsize=22)
             ax.set_title(f'Particle positions ({len(particles)} particles)', fontsize=26)
             ax.set_aspect('equal')  # Equal physical scaling: 1m in x = 1m in z
             ax.tick_params(labelsize=18)
-
-            # Add AMR mesh to particle plot too
-            ax.set_facecolor('#f0f0f0')  # Light gray background
-            lc2 = LineCollection(mesh_lines, colors='#222222', linewidths=0.3, alpha=0.8)
-            ax.add_collection(lc2)
+            ax.set_facecolor('white')  # White background for particle plot
         else:
             # No particles found - show empty plot with message
-            ax.set_facecolor('#f0f0f0')  # Light gray background
+            ax.set_facecolor('white')  # White background
             ax.text(0.5, 0.5, 'No particle data available',
                    ha='center', va='center', transform=ax.transAxes, fontsize=20,
-                   color='darkgray')
-            ax.set_xlim(extent[0], extent[1])
+                   color='gray')
+            ax.set_xlim(50, 150)  # Set x-axis range
             ax.set_ylim(extent[2], extent[3])
             ax.set_xlabel('X (m)', fontsize=22)
             ax.set_ylabel('Z (m)', fontsize=22)
@@ -344,29 +415,52 @@ def plot_all_timesteps(run_dir, output_dir, with_particles=False):
     print("Loading first plotfile to check domain...")
     ds = yt.load(plotfiles[0])
     domain_extent = get_domain_extent(ds)
+    available_vars = [name for (_, name) in ds.field_list]
 
     print(f"Domain extent: {domain_extent[0]:.1f} m x {domain_extent[1]:.1f} m x {domain_extent[2]:.1f} m")
     print(f"Max AMR level: {ds.max_level}")
 
+    # Check for super-droplet fields
+    sd_fields = [f for f in available_vars if 'droplet' in f.lower() or 'moisture' in f.lower()]
+    if sd_fields:
+        print(f"Super-droplet/moisture fields found: {sd_fields}")
+    else:
+        print("WARNING: No super-droplet or moisture fields found in plotfiles!")
+        print(f"Available fields (first 10): {available_vars[:10]}")
+
     # Process each plotfile
+    successful = 0
+    failed = []
+
     for i, pltfile in enumerate(plotfiles):
         plotfile_name = os.path.basename(pltfile)
         print(f"\nProcessing {plotfile_name} ({i+1}/{len(plotfiles)})...")
 
-        # Load data
-        ds = yt.load(pltfile)
-        time = float(ds.current_time)
+        try:
+            # Load data
+            ds = yt.load(pltfile)
+            time = float(ds.current_time)
 
-        # Create plot
-        output_file = os.path.join(output_dir, f'superdroplets_{plotfile_name}.png')
-        plot_superdroplet_fields(ds, time, output_file, domain_extent,
-                                with_particles=with_particles,
-                                run_dir=run_dir,
-                                plotfile_name=plotfile_name)
+            # Create plot
+            output_file = os.path.join(output_dir, f'superdroplets_{plotfile_name}.png')
+            plot_superdroplet_fields(ds, time, output_file, domain_extent,
+                                    with_particles=with_particles)
 
-        print(f"  Saved {output_file}")
+            print(f"  Saved {output_file}")
+            successful += 1
+        except (OverflowError, RuntimeError, ValueError) as e:
+            print(f"  ERROR: Failed to process {plotfile_name}: {type(e).__name__}: {e}")
+            print(f"  Skipping this timestep and continuing...")
+            failed.append(plotfile_name)
+            continue
 
-    print(f"\nAll plots saved to {output_dir}/")
+    print(f"\n{'='*70}")
+    print(f"Summary: {successful}/{len(plotfiles)} plots created successfully")
+    if failed:
+        print(f"Failed plotfiles: {', '.join(failed)}")
+        print(f"Note: This may be due to a yt bug with certain AMR structures.")
+    print(f"Output directory: {output_dir}/")
+    print(f"{'='*70}")
 
 
 def main():
@@ -395,7 +489,7 @@ Output:
 
 Plot Layout:
   Without --with-particles: Single panel showing number density with mesh
-  With --with-particles:    Two panels side-by-side (density + particles)
+  With --with-particles:    Two panels side-by-side (density left, particles right)
 
 Requirements:
   Python packages: yt, numpy, matplotlib

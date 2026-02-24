@@ -52,6 +52,7 @@ erf.plot_vars_1     = density \
                       pert_dens \
                       super_droplets_moisture_number_density \
                       super_droplets_moisture_mass_density
+particles.disable_plt = false
 
 # SOLVER CHOICES
 erf.use_gravity          = true

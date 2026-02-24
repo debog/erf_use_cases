@@ -9,3 +9,6 @@ numpy>=1.20.0
 
 # Matplotlib - Plotting and visualization
 matplotlib>=3.3.0
+
+# SciPy - For image resampling/interpolation
+scipy>=1.6.0
