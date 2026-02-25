@@ -373,10 +373,15 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
         return
 
     # Debug: check field statistics
-    field_min = np.nanmin(field_2d) if np.any(np.isfinite(field_2d)) else np.nan
-    field_max = np.nanmax(field_2d) if np.any(np.isfinite(field_2d)) else np.nan
+    field_min_raw = np.nanmin(field_2d) if np.any(np.isfinite(field_2d)) else np.nan
+    field_max_raw = np.nanmax(field_2d) if np.any(np.isfinite(field_2d)) else np.nan
     field_nonzero = np.sum(field_2d > 0)
-    print(f"  Field stats: min={field_min:.2e}, max={field_max:.2e}, nonzero cells={field_nonzero}")
+    has_negative_or_zero = np.any(field_2d <= 0)
+    if use_logscale and has_negative_or_zero:
+        n_invalid = np.sum(field_2d <= 0)
+        print(f"  Field stats: min={field_min_raw:.2e}, max={field_max_raw:.2e}, nonzero cells={field_nonzero} ({n_invalid} zero/negative cells shown as background)")
+    else:
+        print(f"  Field stats: min={field_min_raw:.2e}, max={field_max_raw:.2e}, nonzero cells={field_nonzero}")
 
     # Get AMR mesh lines
     mesh_lines = get_amr_mesh_lines(ds)
@@ -394,17 +399,29 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
     field_max = np.max(field_2d)
 
     # Use log scale if requested
-    if use_logscale and field_max > 0 and field_min >= 0:
+    if use_logscale and field_max > 0:
         from matplotlib.colors import LogNorm
-        # For log scale, need to handle zeros
-        field_plot = np.copy(field_2d)
-        nonzero_min = np.min(field_2d[field_2d > 0]) if np.any(field_2d > 0) else field_max * 1e-10
-        # Replace zeros with something much smaller than nonzero_min so they appear at bottom of colorscale
-        vmin = nonzero_min / 100.0  # Set vmin lower than actual minimum
-        field_plot[field_plot <= 0] = vmin  # Set zeros to vmin
-        vmax = field_max
-        im = ax.imshow(field_plot, extent=extent, aspect='auto', origin='lower',
-                      cmap='coolwarm', interpolation='bilinear', norm=LogNorm(vmin=vmin, vmax=vmax))
+        import matplotlib
+
+        # Create a masked array: mask out zero and negative values
+        field_masked = np.ma.masked_where(field_2d <= 0, field_2d)
+
+        # Get min/max of positive values only
+        if np.any(field_2d > 0):
+            nonzero_min = np.min(field_2d[field_2d > 0])
+            vmin = nonzero_min / 10.0  # Set vmin slightly lower than actual minimum
+            vmax = field_max
+
+            # Create colormap with a distinct color for masked (invalid) values
+            cmap = matplotlib.colormaps['coolwarm'].copy()
+            cmap.set_bad(color='lightgray', alpha=0.3)  # Light gray background for invalid values
+
+            im = ax.imshow(field_masked, extent=extent, aspect='auto', origin='lower',
+                          cmap=cmap, interpolation='bilinear', norm=LogNorm(vmin=vmin, vmax=vmax))
+        else:
+            # Fallback if no positive values
+            im = ax.imshow(field_2d, extent=extent, aspect='auto', origin='lower',
+                          cmap='coolwarm', interpolation='bilinear', vmin=field_min, vmax=field_max)
     else:
         # Linear scale (default)
         im = ax.imshow(field_2d, extent=extent, aspect='auto', origin='lower',
