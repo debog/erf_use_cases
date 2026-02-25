@@ -38,6 +38,47 @@ def format_time(seconds):
     return f'{seconds:.1f} s'
 
 
+def shorten_field_name(field_name):
+    """
+    Shorten long field names for use in filenames.
+
+    Args:
+        field_name: full field name
+
+    Returns:
+        shortened field name suitable for filenames
+    """
+    # Mapping of common long field names to short versions
+    field_name_map = {
+        'super_droplets_moisture_number_density': 'sd_num_dens',
+        'super_droplets_number_density': 'sd_num_dens',
+        'qc': 'qc',
+        'qv': 'qv',
+        'qt': 'qt',
+        'theta': 'theta',
+        'temperature': 'temp',
+        'density': 'dens',
+    }
+
+    # Return mapped name if it exists
+    if field_name in field_name_map:
+        return field_name_map[field_name]
+
+    # For other fields, create abbreviated version
+    # Remove common prefixes
+    short = field_name.replace('super_droplets_', 'sd_')
+    short = short.replace('moisture_', 'moist_')
+    short = short.replace('number_density', 'num_dens')
+    short = short.replace('mixing_ratio', 'mix_ratio')
+
+    # If still too long (>20 chars), truncate intelligently
+    if len(short) > 20:
+        # Keep first 20 characters
+        short = short[:20]
+
+    return short
+
+
 def get_domain_extent(ds):
     """
     Extract physical domain extent from yt dataset.
@@ -274,7 +315,7 @@ def read_particle_positions(ds, read_mass=False):
 
 def plot_superdroplet_fields(ds, time, output_file, domain_extent,
                              with_particles=False, field_name='super_droplets_moisture_number_density',
-                             particle_mass_alpha=False):
+                             particle_mass_alpha=False, use_logscale=False):
     """
     Create a 2-panel plot showing:
       1. Field with AMR mesh
@@ -288,6 +329,7 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
         with_particles: whether to include particle plot
         field_name: name of field to plot (default: super_droplets_moisture_number_density)
         particle_mass_alpha: whether to use particle mass for transparency (log scale)
+        use_logscale: whether to use logarithmic scale for field plotting (default: False)
     """
     # Set up figure with proper aspect ratio
     # Plot region: x=[50, 150] (100m), z=[0, 100] (100m)
@@ -351,8 +393,8 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
     field_min = np.min(field_2d)
     field_max = np.max(field_2d)
 
-    # Use log scale if range is large, but NOT for qc
-    if field_name != 'qc' and field_max > 0 and field_min >= 0 and (field_max / (field_min + 1e-30) > 100):
+    # Use log scale if requested
+    if use_logscale and field_max > 0 and field_min >= 0:
         from matplotlib.colors import LogNorm
         # For log scale, need to handle zeros
         field_plot = np.copy(field_2d)
@@ -364,7 +406,7 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
         im = ax.imshow(field_plot, extent=extent, aspect='auto', origin='lower',
                       cmap='coolwarm', interpolation='bilinear', norm=LogNorm(vmin=vmin, vmax=vmax))
     else:
-        # Linear scale
+        # Linear scale (default)
         im = ax.imshow(field_2d, extent=extent, aspect='auto', origin='lower',
                       cmap='coolwarm', interpolation='bilinear', vmin=field_min, vmax=field_max)
 
@@ -475,17 +517,18 @@ def process_single_plotfile(args):
 
     Args:
         args: tuple of (pltfile, output_dir, domain_extent, with_particles,
-                       field_name, particle_mass_alpha, i, total)
+                       field_name, particle_mass_alpha, use_logscale, i, total)
 
     Returns:
         tuple of (success, plotfile_name, error_message, skipped)
     """
-    pltfile, output_dir, domain_extent, with_particles, field_name, particle_mass_alpha, i, total = args
+    pltfile, output_dir, domain_extent, with_particles, field_name, particle_mass_alpha, use_logscale, i, total = args
     plotfile_name = os.path.basename(pltfile)
+    short_field = shorten_field_name(field_name)
 
     try:
         # Check if output already exists and is newer than input
-        output_file = os.path.join(output_dir, f'superdroplets_{plotfile_name}.png')
+        output_file = os.path.join(output_dir, f'{short_field}_{plotfile_name}.png')
 
         if os.path.exists(output_file):
             output_mtime = os.path.getmtime(output_file)
@@ -505,7 +548,8 @@ def process_single_plotfile(args):
         plot_superdroplet_fields(ds, time, output_file, domain_extent,
                                 with_particles=with_particles,
                                 field_name=field_name,
-                                particle_mass_alpha=particle_mass_alpha)
+                                particle_mass_alpha=particle_mass_alpha,
+                                use_logscale=use_logscale)
 
         print(f"  Saved {output_file}")
         return (True, plotfile_name, None, False)
@@ -519,7 +563,7 @@ def process_single_plotfile(args):
 
 def plot_all_timesteps(run_dir, output_dir, with_particles=False,
                        field_name='super_droplets_moisture_number_density',
-                       particle_mass_alpha=False, num_procs=1):
+                       particle_mass_alpha=False, use_logscale=False, num_procs=1):
     """
     Plot fields from all timesteps in a run directory.
 
@@ -529,6 +573,7 @@ def plot_all_timesteps(run_dir, output_dir, with_particles=False,
         with_particles: whether to include particle position plots
         field_name: name of field to plot
         particle_mass_alpha: whether to use particle mass for transparency
+        use_logscale: whether to use logarithmic scale for field plotting
         num_procs: number of parallel processes to use (1 = serial)
     """
     # Find all plotfiles (directories only, ignore plt.visit file)
@@ -572,7 +617,7 @@ def plot_all_timesteps(run_dir, output_dir, with_particles=False,
     total = len(plotfiles)
     args_list = [
         (pltfile, output_dir, domain_extent, with_particles, field_name,
-         particle_mass_alpha, i, total)
+         particle_mass_alpha, use_logscale, i, total)
         for i, pltfile in enumerate(plotfiles)
     ]
 
@@ -632,6 +677,9 @@ Examples:
   # Moist bubble with qc field
   %(prog)s .run_BF02_moist_bubble_SDM.matrix.nproc00004 -f qc
 
+  # With logarithmic scale for number density
+  %(prog)s .run_BF02_dry_bubble_AMR1.matrix.nproc00004 -l
+
   # Moist bubble with particles showing mass-weighted transparency, use all CPUs
   %(prog)s .run_BF02_moist_bubble_SDM.matrix.nproc00004 -f qc -p --particle-mass-alpha -n 0
 
@@ -640,8 +688,9 @@ Examples:
 
 Output:
   Creates one PNG file per timestep in the output directory:
-  - superdroplets_plt*.png : 2D plots showing field with AMR mesh
-                              and optionally particle positions
+  - <field>_plt*.png : 2D plots showing field with AMR mesh
+                       and optionally particle positions
+  Examples: sd_num_dens_plt00100.png, qc_plt00100.png
 
 Plot Layout:
   Without -p/--with-particles: Single panel showing field with mesh
@@ -654,7 +703,7 @@ Requirements:
 Technical Details:
   - Extracts 2D slice at y-midplane (index ny//2)
   - Uses 'coolwarm' colormap (blue=low, white=mid, red=high)
-  - Log-scale applied when dynamic range exceeds 100×
+  - Linear scale by default; use -l/--logscale for logarithmic scale
   - Bilinear interpolation for smooth rendering
   - Computational mesh shown as thin dark lines (#222222, linewidth=0.3, alpha=0.8)
   - All cell edges rendered at all AMR levels
@@ -681,6 +730,8 @@ Notes:
                        help='Field to plot (default: super_droplets_moisture_number_density, for moist cases use: qc)')
     parser.add_argument('--particle-mass-alpha', action='store_true',
                        help='Use particle mass for transparency (log scale) in particle plot')
+    parser.add_argument('-l', '--logscale', action='store_true',
+                       help='Use logarithmic scale for field plotting (default: linear scale)')
     parser.add_argument('-n', '--num-procs', dest='num_procs', type=int, default=1,
                        help='Number of parallel processes to use (default: 1, use 0 for all available CPUs)')
 
@@ -708,6 +759,7 @@ Notes:
     print(f"Processing run directory: {run_dir}")
     print(f"Output directory: {output_dir}")
     print(f"Field to plot: {args.field_name}")
+    print(f"Field scale: {'logarithmic' if args.logscale else 'linear'}")
     print(f"Include particles: {args.with_particles}")
     if args.with_particles and args.particle_mass_alpha:
         print(f"Particle transparency: mass-weighted (log scale)")
@@ -719,7 +771,7 @@ Notes:
 
     plot_all_timesteps(run_dir, output_dir, with_particles=args.with_particles,
                       field_name=args.field_name, particle_mass_alpha=args.particle_mass_alpha,
-                      num_procs=num_procs)
+                      use_logscale=args.logscale, num_procs=num_procs)
 
     print("\nDone!")
 

@@ -11,6 +11,7 @@
 #   -p, --with-particles  Include particle position plots
 #   -f, --field=FIELD     Field to plot (default: super_droplets_moisture_number_density)
 #                         For moist bubble use: qc
+#   -l, --logscale        Use logarithmic scale for field plotting (default: linear)
 #   -m, --mass-alpha      Use particle mass for transparency (log scale)
 #   -n, --num-procs=N     Number of parallel processes (default: 1, use 0 for all CPUs)
 #   -t, --type=TYPE       Plot type: superdroplets (default)
@@ -47,6 +48,7 @@ RUN_DIR=""
 OUTPUT_DIR=""
 WITH_PARTICLES=""
 FIELD_NAME=""
+LOGSCALE=""
 MASS_ALPHA=""
 NUM_PROCS=""
 PLOT_TYPE="superdroplets"
@@ -75,6 +77,8 @@ while [[ $# -gt 0 ]]; do
             WITH_PARTICLES="-p" ;;
         -f|--field=*)
             [[ "$1" == -f ]] && { shift; FIELD_NAME="$1"; } || FIELD_NAME="${1#*=}" ;;
+        -l|--logscale)
+            LOGSCALE="-l" ;;
         -m|--mass-alpha)
             MASS_ALPHA="--particle-mass-alpha" ;;
         -n|--num-procs=*)
@@ -143,6 +147,7 @@ for RUN_DIR in "${RUN_DIRS[@]}"; do
             info "  Input:  $RUN_DIR"
             info "  Output: $CURRENT_OUTPUT_DIR"
             [[ -n "$FIELD_NAME" ]] && info "  Field: $FIELD_NAME"
+            [[ -n "$LOGSCALE" ]] && info "  Scale: logarithmic" || info "  Scale: linear"
             [[ -n "$WITH_PARTICLES" ]] && info "  Particles: enabled"
             [[ -n "$MASS_ALPHA" ]] && info "  Particle alpha: mass-weighted"
             [[ -n "$NUM_PROCS" ]] && info "  Parallel processes: $NUM_PROCS"
@@ -152,6 +157,7 @@ for RUN_DIR in "${RUN_DIRS[@]}"; do
             CMD="python3 \"$PLOT_SCRIPT\" \"$RUN_DIR\" -o \"$CURRENT_OUTPUT_DIR\""
             [[ -n "$WITH_PARTICLES" ]] && CMD="$CMD $WITH_PARTICLES"
             [[ -n "$FIELD_NAME" ]] && CMD="$CMD -f \"$FIELD_NAME\""
+            [[ -n "$LOGSCALE" ]] && CMD="$CMD $LOGSCALE"
             [[ -n "$MASS_ALPHA" ]] && CMD="$CMD $MASS_ALPHA"
             [[ -n "$NUM_PROCS" ]] && CMD="$CMD -n $NUM_PROCS"
 
