@@ -332,8 +332,8 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
         use_logscale: whether to use logarithmic scale for field plotting (default: False)
     """
     # Set up figure with proper aspect ratio
-    # Plot region: x=[50, 150] (100m), z=[0, 100] (100m)
-    plot_x_extent = 100.0  # 150 - 50
+    # Plot region: use full domain extent
+    plot_x_extent = domain_extent[0]  # Full x extent
     plot_z_extent = domain_extent[2]  # Full z extent
 
     # For figure size: match the plot region aspect ratio
@@ -453,7 +453,7 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
     else:
         title = f'{field_name}, t = {format_time(time)}'
     ax.set_title(title, fontsize=26)
-    ax.set_xlim(50, 150)  # Set x-axis range
+    ax.set_xlim(extent[0], extent[1])  # Set x-axis range to match domain
     ax.set_aspect('equal')  # Equal physical scaling: 1m in x = 1m in z
     ax.tick_params(labelsize=18)
 
@@ -499,7 +499,7 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
                 ax.scatter(x_particles, z_particles, s=0.1, c='white', alpha=0.3,
                           edgecolors='none', rasterized=True)
 
-            ax.set_xlim(50, 150)  # Set x-axis range
+            ax.set_xlim(extent[0], extent[1])  # Set x-axis range to match domain
             ax.set_ylim(extent[2], extent[3])
             ax.set_xlabel('X (m)', fontsize=22)
             ax.set_ylabel('Z (m)', fontsize=22)
@@ -514,7 +514,7 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
             ax.text(0.5, 0.5, 'No particle data available',
                    ha='center', va='center', transform=ax.transAxes, fontsize=20,
                    color='lightgray')
-            ax.set_xlim(50, 150)  # Set x-axis range
+            ax.set_xlim(extent[0], extent[1])  # Set x-axis range to match domain
             ax.set_ylim(extent[2], extent[3])
             ax.set_xlabel('X (m)', fontsize=22)
             ax.set_ylabel('Z (m)', fontsize=22)
