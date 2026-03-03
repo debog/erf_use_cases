@@ -202,8 +202,15 @@ rm -rf plt* chk* super_droplets_*.txt
 
 export OMP_NUM_THREADS=1
 
-srun -n ${NTASKS} $EXEC $INP $ERF_EXTRA_ARGS 2>&1 | tee out.${PLATFORM}.log
 EOF
+
+    # Build srun command with GPU support if needed
+    if [[ "$GPU_SUPPORT" == "true" ]]; then
+        local total_gpus=$((NTASKS * GPUS_PER_TASK))
+        echo "srun --exclusive -N ${NNODES} -G ${total_gpus} -n ${NTASKS} $EXEC $INP $ERF_EXTRA_ARGS 2>&1 | tee out.${PLATFORM}.log" >> "$jobfile"
+    else
+        echo "srun -N ${NNODES} -n ${NTASKS} $EXEC $INP $ERF_EXTRA_ARGS 2>&1 | tee out.${PLATFORM}.log" >> "$jobfile"
+    fi
 }
 
 generate_flux_batch() {
@@ -250,9 +257,10 @@ generate_run_script() {
     case "$scheduler" in
         slurm)
             local debug_queue=$(get_config "$PLATFORM" "debug_queue" "pdebug")
-            runcmd="srun -n $NTASKS -N $NNODES -p $debug_queue --exclusive"
+            runcmd="srun --exclusive -N $NNODES -n $NTASKS -p $debug_queue"
             if [[ "$GPU_SUPPORT" == "true" ]]; then
-                runcmd="$runcmd --gpus-per-task=${GPUS_PER_TASK}"
+                local total_gpus=$((NTASKS * GPUS_PER_TASK))
+                runcmd="$runcmd -G ${total_gpus} --gpus-per-task=${GPUS_PER_TASK}"
             fi
             ;;
         flux)
@@ -359,9 +367,10 @@ run_interactive() {
     case "$scheduler" in
         slurm)
             local debug_queue=$(get_config "$PLATFORM" "debug_queue" "pdebug")
-            runcmd="srun -n $NTASKS -N $NNODES -p $debug_queue --exclusive"
+            runcmd="srun --exclusive -N $NNODES -n $NTASKS -p $debug_queue"
             if [[ "$GPU_SUPPORT" == "true" ]]; then
-                runcmd="$runcmd --gpus-per-task=${GPUS_PER_TASK}"
+                local total_gpus=$((NTASKS * GPUS_PER_TASK))
+                runcmd="$runcmd -G ${total_gpus} --gpus-per-task=${GPUS_PER_TASK}"
             fi
             ;;
         flux)
