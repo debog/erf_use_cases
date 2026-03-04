@@ -48,10 +48,8 @@ def shorten_field_name(field_name):
     Returns:
         shortened field name suitable for filenames
     """
-    # Mapping of common long field names to short versions
+    # Mapping of common simple field names to short versions
     field_name_map = {
-        'super_droplets_moisture_number_density': 'sd_num_dens',
-        'super_droplets_number_density': 'sd_num_dens',
         'qc': 'qc',
         'qv': 'qv',
         'qt': 'qt',
@@ -65,11 +63,20 @@ def shorten_field_name(field_name):
         return field_name_map[field_name]
 
     # For other fields, create abbreviated version
-    # Remove common prefixes
-    short = field_name.replace('super_droplets_', 'sd_')
-    short = short.replace('moisture_', 'moist_')
+    # Handle super_droplets_moisture_* specially
+    if field_name.startswith('super_droplets_moisture_'):
+        # Replace super_droplets_moisture_ with sdm_
+        short = field_name.replace('super_droplets_moisture_', 'sdm_', 1)
+    elif field_name.startswith('super_droplets_'):
+        # Replace super_droplets_ with sd_
+        short = field_name.replace('super_droplets_', 'sd_', 1)
+    else:
+        short = field_name
+
+    # Apply common abbreviations
     short = short.replace('number_density', 'num_dens')
     short = short.replace('mixing_ratio', 'mix_ratio')
+    short = short.replace('mass_density', 'mass_dens')
 
     # If still too long (>20 chars), truncate intelligently
     if len(short) > 20:
