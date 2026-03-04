@@ -86,6 +86,7 @@ erf.alpha_C          = 0.0
 
 #sdm parameters
 super_droplets_moisture.initial_distribution_type = "uniform"
+super_droplets_moisture.include_cold_processes = false
 super_droplets_moisture.diagnostics_interval = 100
 super_droplets_moisture.radius_raindrop = 1.0       
 super_droplets_moisture.multiplicity_type = "constant"

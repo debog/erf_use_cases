@@ -1,5 +1,5 @@
 # ------------------  INPUTS TO MAIN PROGRAM  -------------------
-max_step  = 2000
+max_step  = 4000
 stop_time = 3600.0
 
 amrex.fpe_trap_invalid = 1
@@ -8,7 +8,7 @@ fabarray.mfiter_tile_size = 1024 1024 1024
 
 # PROBLEM SIZE & GEOMETRY
 geometry.prob_extent = 20000.0 400.0  10000.0
-amr.n_cell           = 100     4      50
+amr.n_cell           = 200     4      100
 geometry.is_periodic = 0 1 0
 xlo.type = "SlipWall"
 xhi.type = "SlipWall"    
@@ -16,7 +16,7 @@ zlo.type = "SlipWall"
 zhi.type = "SlipWall"
 
 # TIME STEP CONTROL
-erf.fixed_dt = 0.5
+erf.fixed_dt = 0.25
 erf.fixed_mri_dt_ratio = 4
 
 # DIAGNOSTICS & VERBOSITY
@@ -30,7 +30,7 @@ erf.check_int       = -1        # number of timesteps between checkpoints
 
 # PLOTFILES
 erf.plot_file_1     = plt        # prefix of plotfile name
-erf.plot_int_1      = 100        # number of timesteps between plotfiles
+erf.plot_int_1      = 200        # number of timesteps between plotfiles
 erf.plot_vars_1     = density \
                       rhotheta \
                       rhoQ1 \
@@ -83,7 +83,8 @@ erf.alpha_C          = 0.0
 
 #sdm parameters
 super_droplets_moisture.initial_distribution_type = "uniform"
-super_droplets_moisture.diagnostics_interval = 100
+super_droplets_moisture.include_cold_processes = false
+super_droplets_moisture.diagnostics_interval = 200
 super_droplets_moisture.radius_raindrop = 1.0       
 super_droplets_moisture.multiplicity_type = "constant"
 super_droplets_moisture.recycle_particles = false
@@ -93,7 +94,7 @@ super_droplets_moisture.initial_aerosol_min_mass_NaCl = 1.0e-22 #kg
 super_droplets_moisture.initial_aerosol_mean_mass_NaCl = 1.0e-19 #kg
 super_droplets_moisture.initial_aerosol_max_mass_NaCl = 1.0e-18 #kg
 super_droplets_moisture.initial_number_density = 1.0e7 #m^{-3}
-super_droplets_moisture.initial_particles_per_cell = 1024
+super_droplets_moisture.initial_particles_per_cell = 256
 
 # PROBLEM PARAMETERS (optional)
 # warm bubble input
