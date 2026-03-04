@@ -460,14 +460,8 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
 
     ax.set_xlabel('X (m)', fontsize=22)
     ax.set_ylabel('Z (m)', fontsize=22)
-    # Set title based on field name
-    if 'number_density' in field_name:
-        title = f'Super-droplet number density, t = {format_time(time)}'
-    elif field_name == 'qc':
-        title = f'Cloud water mixing ratio (qc), t = {format_time(time)}'
-    else:
-        title = f'{field_name}, t = {format_time(time)}'
-    ax.set_title(title, fontsize=26)
+    # Set title with time only
+    ax.set_title(f't = {format_time(time)}', fontsize=26)
     ax.set_xlim(plot_x_min, plot_x_max)  # Set x-axis range
     ax.set_aspect('equal')  # Equal physical scaling: 1m in x = 1m in z
     ax.tick_params(labelsize=18)
@@ -518,8 +512,7 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
             ax.set_ylim(extent[2], extent[3])
             ax.set_xlabel('X (m)', fontsize=22)
             ax.set_ylabel('Z (m)', fontsize=22)
-            title_suffix = ' (mass-weighted)' if (particle_mass_alpha and masses is not None) else ''
-            ax.set_title(f'Particle positions ({len(particles)} particles){title_suffix}', fontsize=26)
+            ax.set_title(f't = {format_time(time)}', fontsize=26)
             ax.set_aspect('equal')  # Equal physical scaling: 1m in x = 1m in z
             ax.tick_params(labelsize=18)
             ax.set_facecolor('black')  # Black background for particle plot
@@ -533,7 +526,7 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
             ax.set_ylim(extent[2], extent[3])
             ax.set_xlabel('X (m)', fontsize=22)
             ax.set_ylabel('Z (m)', fontsize=22)
-            ax.set_title('Particle positions', fontsize=26)
+            ax.set_title(f't = {format_time(time)}', fontsize=26)
             ax.set_aspect('equal')  # Equal physical scaling: 1m in x = 1m in z
             ax.tick_params(labelsize=18)
 
