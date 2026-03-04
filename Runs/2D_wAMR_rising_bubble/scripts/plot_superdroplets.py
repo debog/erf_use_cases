@@ -315,7 +315,7 @@ def read_particle_positions(ds, read_mass=False):
 
 def plot_superdroplet_fields(ds, time, output_file, domain_extent,
                              with_particles=False, field_name='super_droplets_moisture_number_density',
-                             particle_mass_alpha=False, use_logscale=False):
+                             particle_mass_alpha=False, use_logscale=False, is_moist_bubble=False):
     """
     Create a 2-panel plot showing:
       1. Field with AMR mesh
@@ -330,12 +330,11 @@ def plot_superdroplet_fields(ds, time, output_file, domain_extent,
         field_name: name of field to plot (default: super_droplets_moisture_number_density)
         particle_mass_alpha: whether to use particle mass for transparency (log scale)
         use_logscale: whether to use logarithmic scale for field plotting (default: False)
+        is_moist_bubble: whether this is a moist bubble case (affects x-axis limits)
     """
     # Set up figure with proper aspect ratio
-    # Determine if this is a large domain (moist bubble) or small domain (dry bubble)
-    is_large_domain = domain_extent[0] > 1000.0  # > 1 km means moist bubble case
-
-    if is_large_domain:
+    # Set x-axis limits based on case type
+    if is_moist_bubble:
         # Moist bubble: use full domain extent
         plot_x_min, plot_x_max = 0.0, domain_extent[0]
     else:
@@ -543,12 +542,12 @@ def process_single_plotfile(args):
 
     Args:
         args: tuple of (pltfile, output_dir, domain_extent, with_particles,
-                       field_name, particle_mass_alpha, use_logscale, i, total)
+                       field_name, particle_mass_alpha, use_logscale, is_moist_bubble, i, total)
 
     Returns:
         tuple of (success, plotfile_name, error_message, skipped)
     """
-    pltfile, output_dir, domain_extent, with_particles, field_name, particle_mass_alpha, use_logscale, i, total = args
+    pltfile, output_dir, domain_extent, with_particles, field_name, particle_mass_alpha, use_logscale, is_moist_bubble, i, total = args
     plotfile_name = os.path.basename(pltfile)
     short_field = shorten_field_name(field_name)
 
@@ -575,7 +574,8 @@ def process_single_plotfile(args):
                                 with_particles=with_particles,
                                 field_name=field_name,
                                 particle_mass_alpha=particle_mass_alpha,
-                                use_logscale=use_logscale)
+                                use_logscale=use_logscale,
+                                is_moist_bubble=is_moist_bubble)
 
         print(f"  Saved {output_file}")
         return (True, plotfile_name, None, False)
@@ -639,11 +639,14 @@ def plot_all_timesteps(run_dir, output_dir, with_particles=False,
         print("WARNING: No droplet/moisture/qc fields found in plotfiles!")
         print(f"Available fields (first 20): {available_vars[:20]}")
 
+    # Determine if this is a moist bubble case from run directory name
+    is_moist_bubble = 'moist' in run_dir.lower()
+
     # Prepare arguments for parallel processing
     total = len(plotfiles)
     args_list = [
         (pltfile, output_dir, domain_extent, with_particles, field_name,
-         particle_mass_alpha, use_logscale, i, total)
+         particle_mass_alpha, use_logscale, is_moist_bubble, i, total)
         for i, pltfile in enumerate(plotfiles)
     ]
 
