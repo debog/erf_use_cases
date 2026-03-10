@@ -220,6 +220,12 @@ for RUN_DIR in "${RUN_DIRS[@]}"; do
         CURRENT_OUTPUT_DIR="$RUN_DIR/plots"
     fi
 
+    # Clean up old plots from output directory
+    if [[ -d "$CURRENT_OUTPUT_DIR" ]]; then
+        info "Cleaning up old plots from $CURRENT_OUTPUT_DIR"
+        rm -f "$CURRENT_OUTPUT_DIR"/*.png
+    fi
+
     # Process each field
     for FIELD_NAME in "${FIELD_NAMES[@]}"; do
         PLOT_SCRIPT="$SCRIPT_DIR/plot_superdroplets.py"
