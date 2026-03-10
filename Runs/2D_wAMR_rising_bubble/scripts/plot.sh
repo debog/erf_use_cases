@@ -1,21 +1,38 @@
 #!/bin/bash
 #
-# Convenience wrapper for plotting scripts
+# Unified plotting script for ERF runs
 #
 # Usage:
 #   ./plot.sh [OPTIONS]
 #
 # Options:
-#   -r, --run=DIR         Run directory to process (default: auto-detect from .run_*)
+#   -c, --case=NAME       Input case name (required if not using -r)
+#   -r, --run=DIR         Run directory to process (alternative to -c)
 #   -o, --output=DIR      Output directory for plots (default: <run_dir>/plots)
 #   -p, --with-particles  Include particle position plots
-#   -f, --field=FIELD     Field to plot (default: super_droplets_moisture_number_density)
-#                         For moist bubble use: qc
+#   -f, --field=FIELD     Field(s) to plot (can be specified multiple times)
+#                         Default: super_droplets_moisture_number_density
+#                         Examples: qc, qv, super_droplets_moisture_number_density
 #   -l, --logscale        Use logarithmic scale for field plotting (default: linear)
 #   -m, --mass-alpha      Use particle mass for transparency (log scale)
 #   -n, --num-procs=N     Number of parallel processes (default: 1, use 0 for all CPUs)
-#   -t, --type=TYPE       Plot type: superdroplets (default)
 #   -h, --help            Show this help message
+#
+# Environment:
+#   LCHOST            Platform identifier (auto-detected, or 'desktop' if unset)
+#
+# Examples:
+#   # Plot qc for a moist bubble case
+#   ./plot.sh -c BF02_moist_bubble_AMR1 -f qc
+#
+#   # Plot multiple fields
+#   ./plot.sh -c BF02_moist_bubble_AMR1 -f qc -f super_droplets_moisture_number_density
+#
+#   # Plot with particles and use all CPUs
+#   ./plot.sh -c BF02_dry_bubble_AMR1 -p -n 0
+#
+#   # Directly specify run directory
+#   ./plot.sh -r .run_BF02_moist_bubble_AMR1.matrix.nproc00004 -f qc
 #
 
 set -e
@@ -25,13 +42,15 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Colors
 if [[ -t 1 ]]; then
-    RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'; NC='\033[0m'
+    RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 else
-    RED='' GREEN='' YELLOW='' NC=''
+    RED='' GREEN='' YELLOW='' BLUE='' NC=''
 fi
 
 error() { echo -e "${RED}ERROR:${NC} $*" >&2; exit 1; }
+warn()  { echo -e "${YELLOW}WARNING:${NC} $*" >&2; }
 info()  { echo -e "${GREEN}==>${NC} $*"; }
+debug() { [[ -n "$VERBOSE" ]] && echo -e "${BLUE}DEBUG:${NC} $*" >&2 || true; }
 
 usage() {
     sed -n '/^# Usage:/,/^[^#]/p' "$0" | grep '^#' | sed 's/^# \?//'
@@ -44,17 +63,20 @@ if [[ $# -eq 0 ]]; then
 fi
 
 # Parse arguments
+CASE=""
 RUN_DIR=""
 OUTPUT_DIR=""
 WITH_PARTICLES=""
-FIELD_NAME=""
+FIELD_NAMES=()
 LOGSCALE=""
 MASS_ALPHA=""
 NUM_PROCS=""
-PLOT_TYPE="superdroplets"
+VERBOSE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        -c|--case=*)
+            [[ "$1" == -c ]] && { shift; CASE="$1"; } || CASE="${1#*=}" ;;
         -r|--run=*)
             if [[ "$1" == -r ]]; then
                 shift
@@ -76,15 +98,21 @@ while [[ $# -gt 0 ]]; do
         -p|--with-particles)
             WITH_PARTICLES="-p" ;;
         -f|--field=*)
-            [[ "$1" == -f ]] && { shift; FIELD_NAME="$1"; } || FIELD_NAME="${1#*=}" ;;
+            if [[ "$1" == -f ]]; then
+                shift
+                FIELD_NAMES+=("$1")
+            else
+                FIELD_NAMES+=("${1#*=}")
+            fi
+            ;;
         -l|--logscale)
             LOGSCALE="-l" ;;
         -m|--mass-alpha)
             MASS_ALPHA="--particle-mass-alpha" ;;
         -n|--num-procs=*)
             [[ "$1" == -n ]] && { shift; NUM_PROCS="$1"; } || NUM_PROCS="${1#*=}" ;;
-        -t|--type=*)
-            [[ "$1" == -t ]] && { shift; PLOT_TYPE="$1"; } || PLOT_TYPE="${1#*=}" ;;
+        -v|--verbose)
+            VERBOSE=1 ;;
         -h|--help)
             usage ;;
         *)
@@ -93,36 +121,67 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-# Select run directories to process
-if [[ ${#RUN_DIR_CANDIDATES[@]} -gt 0 ]]; then
-    # Sort all matching directories
+# Auto-detect platform from LCHOST, default to 'desktop'
+if [[ -z "$LCHOST" ]]; then
+    PLATFORM="desktop"
+    debug "LCHOST not set, assuming desktop environment"
+else
+    PLATFORM="$LCHOST"
+fi
+
+# Determine run directories to process
+if [[ -n "$CASE" ]]; then
+    # Case name provided - find matching run directory for this platform
+    debug "Looking for run directories matching case: $CASE, platform: $PLATFORM"
+
+    # Pattern: .run_${CASE}.${PLATFORM}.*
+    RUN_DIRS=($(ls -d "$ROOT_DIR"/.run_${CASE}.${PLATFORM}.* 2>/dev/null | sort -r))
+
+    if [[ ${#RUN_DIRS[@]} -eq 0 ]]; then
+        error "No run directories found for case '$CASE' on platform '$PLATFORM'
+       Pattern: .run_${CASE}.${PLATFORM}.*
+       Available directories: $(ls -d "$ROOT_DIR"/.run_* 2>/dev/null | xargs -n1 basename | head -5)"
+    fi
+
+    if [[ ${#RUN_DIRS[@]} -gt 1 ]]; then
+        info "Found ${#RUN_DIRS[@]} matching run directories, using most recent: $(basename "${RUN_DIRS[0]}")"
+    else
+        info "Found run directory: $(basename "${RUN_DIRS[0]}")"
+    fi
+elif [[ ${#RUN_DIR_CANDIDATES[@]} -gt 0 ]]; then
+    # Run directory explicitly provided with -r
     IFS=$'\n' RUN_DIRS=($(sort -r <<<"${RUN_DIR_CANDIDATES[*]}"))
     unset IFS
     if [[ ${#RUN_DIRS[@]} -gt 1 ]]; then
         info "Processing ${#RUN_DIRS[@]} directories: ${RUN_DIRS[*]}"
     fi
 else
-    # Auto-detect run directory if not specified
+    # Auto-detect run directory if neither -c nor -r specified
     RUN_DIRS=($(ls -d "$ROOT_DIR"/.run_* 2>/dev/null | sort -r))
     if [[ ${#RUN_DIRS[@]} -eq 0 ]]; then
-        error "No run directories found. Use -r to specify one."
+        error "No run directories found. Use -c to specify case name or -r to specify directory."
     fi
     RUN_DIRS=("${RUN_DIRS[0]}")
     info "Auto-detected run directory: $(basename "${RUN_DIRS[0]}")"
+fi
+
+# Set default field if none specified
+if [[ ${#FIELD_NAMES[@]} -eq 0 ]]; then
+    FIELD_NAMES=("super_droplets_moisture_number_density")
 fi
 
 # Process each run directory
 for RUN_DIR in "${RUN_DIRS[@]}"; do
     # Validate run directory
     if [[ ! -d "$RUN_DIR" ]]; then
-        echo "${RED}WARNING:${NC} Run directory not found: $RUN_DIR (skipping)"
+        warn "Run directory not found: $RUN_DIR (skipping)"
         continue
     fi
 
     # Check for plotfiles
-    PLOTFILES=($(ls -d "$RUN_DIR"/plt* 2>/dev/null))
+    PLOTFILES=($(ls -d "$RUN_DIR"/plt* 2>/dev/null | grep -v '\.visit$'))
     if [[ ${#PLOTFILES[@]} -eq 0 ]]; then
-        echo "${RED}WARNING:${NC} No plotfiles found in $RUN_DIR (skipping)"
+        warn "No plotfiles found in $RUN_DIR (skipping)"
         continue
     fi
 
@@ -135,38 +194,34 @@ for RUN_DIR in "${RUN_DIRS[@]}"; do
         CURRENT_OUTPUT_DIR="$RUN_DIR/plots"
     fi
 
-    # Run the appropriate plotting script
-    case "$PLOT_TYPE" in
-        superdroplets)
-            PLOT_SCRIPT="$SCRIPT_DIR/plot_superdroplets.py"
-            if [[ ! -f "$PLOT_SCRIPT" ]]; then
-                error "Plot script not found: $PLOT_SCRIPT"
-            fi
+    # Process each field
+    for FIELD_NAME in "${FIELD_NAMES[@]}"; do
+        PLOT_SCRIPT="$SCRIPT_DIR/plot_superdroplets.py"
+        if [[ ! -f "$PLOT_SCRIPT" ]]; then
+            error "Plot script not found: $PLOT_SCRIPT"
+        fi
 
-            info "Plotting fields"
-            info "  Input:  $RUN_DIR"
-            info "  Output: $CURRENT_OUTPUT_DIR"
-            [[ -n "$FIELD_NAME" ]] && info "  Field: $FIELD_NAME"
-            [[ -n "$LOGSCALE" ]] && info "  Scale: logarithmic" || info "  Scale: linear"
-            [[ -n "$WITH_PARTICLES" ]] && info "  Particles: enabled"
-            [[ -n "$MASS_ALPHA" ]] && info "  Particle alpha: mass-weighted"
-            [[ -n "$NUM_PROCS" ]] && info "  Parallel processes: $NUM_PROCS"
-            echo
+        info "Plotting field: $FIELD_NAME"
+        info "  Input:  $(basename "$RUN_DIR")"
+        info "  Output: $CURRENT_OUTPUT_DIR"
+        [[ -n "$LOGSCALE" ]] && info "  Scale: logarithmic" || info "  Scale: linear"
+        [[ -n "$WITH_PARTICLES" ]] && info "  Particles: enabled"
+        [[ -n "$MASS_ALPHA" ]] && info "  Particle alpha: mass-weighted"
+        [[ -n "$NUM_PROCS" ]] && info "  Parallel processes: ${NUM_PROCS:-1}"
+        echo
 
-            # Build command with optional arguments
-            CMD="python3 \"$PLOT_SCRIPT\" \"$RUN_DIR\" -o \"$CURRENT_OUTPUT_DIR\""
-            [[ -n "$WITH_PARTICLES" ]] && CMD="$CMD $WITH_PARTICLES"
-            [[ -n "$FIELD_NAME" ]] && CMD="$CMD -f \"$FIELD_NAME\""
-            [[ -n "$LOGSCALE" ]] && CMD="$CMD $LOGSCALE"
-            [[ -n "$MASS_ALPHA" ]] && CMD="$CMD $MASS_ALPHA"
-            [[ -n "$NUM_PROCS" ]] && CMD="$CMD -n $NUM_PROCS"
+        # Build command with optional arguments
+        CMD="python3 \"$PLOT_SCRIPT\" \"$RUN_DIR\" -o \"$CURRENT_OUTPUT_DIR\""
+        CMD="$CMD -f \"$FIELD_NAME\""
+        [[ -n "$WITH_PARTICLES" ]] && CMD="$CMD $WITH_PARTICLES"
+        [[ -n "$LOGSCALE" ]] && CMD="$CMD $LOGSCALE"
+        [[ -n "$MASS_ALPHA" ]] && CMD="$CMD $MASS_ALPHA"
+        [[ -n "$NUM_PROCS" ]] && CMD="$CMD -n $NUM_PROCS"
 
-            eval $CMD
-            ;;
-        *)
-            error "Unknown plot type: $PLOT_TYPE"
-            ;;
-    esac
+        eval $CMD
+
+        echo
+    done
 
     info "Done! Plots saved to $CURRENT_OUTPUT_DIR"
     echo
