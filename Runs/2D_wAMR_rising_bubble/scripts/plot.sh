@@ -10,9 +10,9 @@
 #   -r, --run=DIR         Run directory to process (alternative to -c)
 #   -o, --output=DIR      Output directory for plots (default: <run_dir>/plots)
 #   -p, --with-particles  Include particle position plots
-#   -f, --field=FIELD     Field(s) to plot (can be specified multiple times)
+#   -f, --field=FIELD     Field(s) to plot (space-separated list)
 #                         Default: super_droplets_moisture_number_density
-#                         Examples: qc, qv, super_droplets_moisture_number_density
+#                         Examples: -f qc qv super_droplets_moisture_number_density
 #   -l, --list-cases      List available input cases
 #   --log                 Use logarithmic scale for field plotting (default: linear)
 #   -m, --mass-alpha      Use particle mass for transparency (log scale)
@@ -30,10 +30,10 @@
 #   ./plot.sh -c BF02_moist_bubble_AMR1 -f qc
 #
 #   # Plot multiple fields
-#   ./plot.sh -c BF02_moist_bubble_AMR1 -f qc -f super_droplets_moisture_number_density
+#   ./plot.sh -c BF02_moist_bubble_AMR1 -f qc super_droplets_moisture_number_density
 #
 #   # Plot with particles and use all CPUs
-#   ./plot.sh -c BF02_dry_bubble_AMR1 -p -n 0
+#   ./plot.sh -c BF02_dry_bubble_AMR1 -p -n 0 -f qc qv
 #
 #   # Use logarithmic scale
 #   ./plot.sh -c BF02_moist_bubble_AMR1 -f qc --log
@@ -118,7 +118,13 @@ while [[ $# -gt 0 ]]; do
         -f|--field=*)
             if [[ "$1" == -f ]]; then
                 shift
-                FIELD_NAMES+=("$1")
+                # Collect all non-option arguments as field names
+                while [[ $# -gt 0 && "$1" != -* ]]; do
+                    FIELD_NAMES+=("$1")
+                    shift
+                done
+                # Already shifted, so continue without shift at end
+                continue
             else
                 FIELD_NAMES+=("${1#*=}")
             fi
