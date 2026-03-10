@@ -13,7 +13,8 @@
 #   -f, --field=FIELD     Field(s) to plot (can be specified multiple times)
 #                         Default: super_droplets_moisture_number_density
 #                         Examples: qc, qv, super_droplets_moisture_number_density
-#   -l, --logscale        Use logarithmic scale for field plotting (default: linear)
+#   -l, --list-cases      List available input cases
+#   --log                 Use logarithmic scale for field plotting (default: linear)
 #   -m, --mass-alpha      Use particle mass for transparency (log scale)
 #   -n, --num-procs=N     Number of parallel processes (default: 1, use 0 for all CPUs)
 #   -h, --help            Show this help message
@@ -22,6 +23,9 @@
 #   LCHOST            Platform identifier (auto-detected, or 'desktop' if unset)
 #
 # Examples:
+#   # List available cases
+#   ./plot.sh -l
+#
 #   # Plot qc for a moist bubble case
 #   ./plot.sh -c BF02_moist_bubble_AMR1 -f qc
 #
@@ -31,6 +35,9 @@
 #   # Plot with particles and use all CPUs
 #   ./plot.sh -c BF02_dry_bubble_AMR1 -p -n 0
 #
+#   # Use logarithmic scale
+#   ./plot.sh -c BF02_moist_bubble_AMR1 -f qc --log
+#
 #   # Directly specify run directory
 #   ./plot.sh -r .run_BF02_moist_bubble_AMR1.matrix.nproc00004 -f qc
 #
@@ -39,6 +46,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+INPUTS_DIR="$ROOT_DIR/inputs"
 
 # Colors
 if [[ -t 1 ]]; then
@@ -55,6 +63,16 @@ debug() { [[ -n "$VERBOSE" ]] && echo -e "${BLUE}DEBUG:${NC} $*" >&2 || true; }
 usage() {
     sed -n '/^# Usage:/,/^[^#]/p' "$0" | grep '^#' | sed 's/^# \?//'
     exit 0
+}
+
+# List available input cases
+list_cases() {
+    echo "Available cases in $INPUTS_DIR:"
+    for f in "$INPUTS_DIR"/inputs_*; do
+        [[ -f "$f" ]] || continue
+        local name=$(basename "$f" | sed 's/^inputs_//')
+        echo "  $name"
+    done
 }
 
 # Show help if no arguments provided
@@ -105,7 +123,9 @@ while [[ $# -gt 0 ]]; do
                 FIELD_NAMES+=("${1#*=}")
             fi
             ;;
-        -l|--logscale)
+        -l|--list-cases)
+            list_cases; exit 0 ;;
+        --log)
             LOGSCALE="-l" ;;
         -m|--mass-alpha)
             MASS_ALPHA="--particle-mass-alpha" ;;
