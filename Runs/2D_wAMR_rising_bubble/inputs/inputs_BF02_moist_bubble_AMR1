@@ -1,5 +1,5 @@
 # ------------------  INPUTS TO MAIN PROGRAM  -------------------
-max_step  = 4000
+max_step  = 2000
 stop_time = 3600.0
 
 amrex.fpe_trap_invalid = 1
@@ -16,7 +16,7 @@ zlo.type = "SlipWall"
 zhi.type = "SlipWall"
 
 # TIME STEP CONTROL
-erf.fixed_dt = 0.25
+erf.fixed_dt = 0.5
 erf.fixed_mri_dt_ratio = 4
 
 # DIAGNOSTICS & VERBOSITY
@@ -30,7 +30,7 @@ erf.check_int       = -1        # number of timesteps between checkpoints
 
 # PLOTFILES
 erf.plot_file_1     = plt        # prefix of plotfile name
-erf.plot_int_1      = 200        # number of timesteps between plotfiles
+erf.plot_int_1      = 100        # number of timesteps between plotfiles
 erf.plot_vars_1     = density \
                       rhotheta \
                       rhoQ1 \
@@ -53,6 +53,7 @@ erf.plot_vars_1     = density \
                       qc \
                       qrain \
                       rain_accum \
+                      super_droplets_moisture_sd_number_density \
                       super_droplets_moisture_number_density \
                       super_droplets_moisture_mass_density
 particles.disable_plt = false
@@ -84,7 +85,7 @@ erf.alpha_C          = 0.0
 #sdm parameters
 super_droplets_moisture.initial_distribution_type = "uniform"
 super_droplets_moisture.include_cold_processes = false
-super_droplets_moisture.diagnostics_interval = 200
+super_droplets_moisture.diagnostics_interval = 100
 super_droplets_moisture.radius_raindrop = 1.0       
 super_droplets_moisture.multiplicity_type = "constant"
 super_droplets_moisture.recycle_particles = false
