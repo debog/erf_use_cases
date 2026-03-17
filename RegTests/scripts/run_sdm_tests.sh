@@ -93,11 +93,16 @@ declare -A SDM_TEST_CONFIG=(
     ["SDM_SineMassFlux"]="1e-14 1e-14 plt00050"
 )
 
-# Executable mapping - ALL tests now use the consolidated erf_exec executable
+# Executable mapping - Most tests use the consolidated erf_exec executable
 # The executable is located at: ${ERF_BUILD}/erf_exec
 # (After code consolidation, all problem types are handled by a single executable
 #  with the problem type specified via erf.prob_name in the input file)
 EXEC_NAME="erf_exec"
+
+# Tests requiring specific executables (not consolidated)
+declare -A SPECIFIC_EXEC_MAP=(
+    ["SDM_SineMassFlux"]="erf_sinusoidal_mass_flux"
+)
 
 # Tests requiring input_sounding file
 declare -A INPUT_SOUNDING_MAP=(
@@ -242,13 +247,28 @@ validate_environment() {
 # Test discovery and execution
 # =============================================================================
 get_exec_file() {
-    # After consolidation, all tests use the same erf_exec executable
+    local test_name="$1"
+    local exec_name="${EXEC_NAME}"
+
+    # Check if this test requires a specific executable
+    if [[ -n "${SPECIFIC_EXEC_MAP[$test_name]}" ]]; then
+        exec_name="${SPECIFIC_EXEC_MAP[$test_name]}"
+        debug "Test $test_name uses specific executable: $exec_name"
+    fi
+
     # Try common build locations in order of likelihood
     local candidates=(
-        "${ERF_BUILD}/${EXEC_NAME}"
-        "${ERF_BUILD}/Exec/${EXEC_NAME}"
-        "${ERF_BUILD}/bin/${EXEC_NAME}"
+        "${ERF_BUILD}/${exec_name}"
+        "${ERF_BUILD}/Exec/${exec_name}"
+        "${ERF_BUILD}/bin/${exec_name}"
     )
+
+    # For specific executables, also check subdirectories where they are built
+    if [[ "$exec_name" == "erf_sinusoidal_mass_flux" ]]; then
+        candidates+=(
+            "${ERF_BUILD}/Exec_dev/sinusoidal_mass_flux/${exec_name}"
+        )
+    fi
 
     for candidate in "${candidates[@]}"; do
         if [[ -x "$candidate" ]]; then
@@ -310,9 +330,10 @@ run_single_test() {
     fi
 
     # Get executable
-    local exec_file=$(get_exec_file)
+    local exec_file=$(get_exec_file "$test_name")
     if [[ -z "$exec_file" ]]; then
-        echo -e "${YELLOW}SKIP${NC} - No ${EXEC_NAME} executable found in ERF_BUILD (${ERF_BUILD})"
+        local expected_exec="${SPECIFIC_EXEC_MAP[$test_name]:-${EXEC_NAME}}"
+        echo -e "${YELLOW}SKIP${NC} - No ${expected_exec} executable found in ERF_BUILD (${ERF_BUILD})"
         return 2
     fi
 
