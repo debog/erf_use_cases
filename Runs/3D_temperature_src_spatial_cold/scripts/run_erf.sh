@@ -143,7 +143,7 @@ validate() {
     fi
 
     # Find ERF executable
-    EXEC="$ERF_BUILD/Exec_dev/TemperatureSourceSpatial_cold/erf_abl_with_spatial_temperature_source_cold"
+    EXEC="$ERF_BUILD/Exec/erf_exec"
     if [[ ! -x "$EXEC" ]]; then
         error "ERF executable not found or not executable: $EXEC"
     fi

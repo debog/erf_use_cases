@@ -143,7 +143,7 @@ validate() {
     fi
 
     # Find ERF executable
-    EXEC="$ERF_BUILD/Exec_dev/GATE/erf_gate"
+    EXEC="$ERF_BUILD/Exec/erf_exec"
     if [[ ! -x "$EXEC" ]]; then
         error "ERF executable not found or not executable: $EXEC"
     fi

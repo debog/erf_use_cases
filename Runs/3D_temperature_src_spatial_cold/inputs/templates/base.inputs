@@ -1,1 +1,3 @@
+erf.prob_name = "TemperatureSourceSpatial_cold"
+
 # Empty base file - all parameters are defined in the override files
