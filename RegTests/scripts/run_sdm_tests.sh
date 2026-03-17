@@ -93,14 +93,11 @@ declare -A SDM_TEST_CONFIG=(
     ["SDM_SineMassFlux"]="1e-14 1e-14 plt00050"
 )
 
-# Executable mapping (pattern -> relative path from ERF_BUILD)
-declare -A EXEC_MAP=(
-    ["RICO"]="Exec/DevTests/RICO"
-    ["MultiSpecies"]="Exec/DevTests/MultiSpeciesBubble"
-    ["Congestus"]="Exec/DevTests/TemperatureSourceSpatial"
-    ["SineMassFlux"]="Exec/DevTests/sinusoidal_mass_flux"
-)
-DEFAULT_EXEC_PATH="Exec/MoistRegTests/Bubble"
+# Executable mapping - ALL tests now use the consolidated erf_exec executable
+# The executable is located at: ${ERF_BUILD}/erf_exec
+# (After code consolidation, all problem types are handled by a single executable
+#  with the problem type specified via erf.prob_name in the input file)
+EXEC_NAME="erf_exec"
 
 # Tests requiring input_sounding file
 declare -A INPUT_SOUNDING_MAP=(
@@ -244,15 +241,25 @@ validate_environment() {
 # =============================================================================
 # Test discovery and execution
 # =============================================================================
-get_exec_path() {
-    local test_name="$1"
-    for pattern in "${!EXEC_MAP[@]}"; do
-        if [[ "$test_name" == *"$pattern"* ]]; then
-            echo "${ERF_BUILD}/${EXEC_MAP[$pattern]}"
-            return
+get_exec_file() {
+    # After consolidation, all tests use the same erf_exec executable
+    # Try common build locations in order of likelihood
+    local candidates=(
+        "${ERF_BUILD}/${EXEC_NAME}"
+        "${ERF_BUILD}/Exec/${EXEC_NAME}"
+        "${ERF_BUILD}/bin/${EXEC_NAME}"
+    )
+
+    for candidate in "${candidates[@]}"; do
+        if [[ -x "$candidate" ]]; then
+            echo "$candidate"
+            return 0
         fi
     done
-    echo "${ERF_BUILD}/${DEFAULT_EXEC_PATH}"
+
+    # Not found in common locations, return empty
+    echo ""
+    return 1
 }
 
 discover_tests() {
@@ -303,10 +310,9 @@ run_single_test() {
     fi
 
     # Get executable
-    local exec_path=$(get_exec_path "$test_name")
-    local exec_file=$(ls "$exec_path"/erf_* 2>/dev/null | head -1) || true
-    if [[ -z "$exec_file" || ! -x "$exec_file" ]]; then
-        echo -e "${YELLOW}SKIP${NC} - No executable found in $exec_path"
+    local exec_file=$(get_exec_file)
+    if [[ -z "$exec_file" ]]; then
+        echo -e "${YELLOW}SKIP${NC} - No ${EXEC_NAME} executable found in ERF_BUILD (${ERF_BUILD})"
         return 2
     fi
 
