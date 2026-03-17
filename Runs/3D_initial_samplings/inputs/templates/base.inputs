@@ -1,5 +1,5 @@
 # ==============================================================================
-# BASE TEMPLATE: 3D Initial Sampling (erf_bubble executable)
+# BASE TEMPLATE: 3D Initial Sampling (erf_exec executable)
 # ==============================================================================
 # Base configuration for initial sampling runs with max_step = 0
 # Override specific sampling parameters using the sampling options override file
@@ -18,6 +18,9 @@ geometry.prob_lo     =  0.   0.    0.
 geometry.prob_hi     =  100. 100. 100.
 amr.n_cell           =  4    4    4
 geometry.is_periodic = 1 1 1
+
+# PROBLEM NAME (required by consolidated erf_exec)
+erf.prob_name = "Bubble"
 
 # TIME STEP CONTROL
 erf.fixed_dt = 0.05

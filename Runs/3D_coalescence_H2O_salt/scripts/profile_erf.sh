@@ -122,14 +122,9 @@ validate() {
     fi
 
     # Find ERF executable
-    ERF_EXEC_PATH="$ERF_BUILD/Exec/MoistRegTests/Bubble"
-    if [[ ! -d "$ERF_EXEC_PATH" ]]; then
-        error "ERF executable directory not found: $ERF_EXEC_PATH"
-    fi
-
-    EXEC=$(ls "$ERF_EXEC_PATH"/erf_* 2>/dev/null | head -1) || true
-    if [[ -z "$EXEC" || ! -x "$EXEC" ]]; then
-        error "No ERF executable found in $ERF_EXEC_PATH"
+    EXEC="$ERF_BUILD/Exec/erf_exec"
+    if [[ ! -x "$EXEC" ]]; then
+        error "ERF executable not found or not executable: $EXEC"
     fi
 
     # Validate case and platform

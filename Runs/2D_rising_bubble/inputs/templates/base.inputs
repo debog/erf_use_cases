@@ -24,6 +24,9 @@ xhi.type = "SlipWall"
 zlo.type = "SlipWall"
 zhi.type = "SlipWall"
 
+# PROBLEM NAME (required by consolidated erf_exec)
+erf.prob_name = "Bubble"
+
 # TIME STEP CONTROL
 erf.fixed_dt = 0.5
 erf.fixed_mri_dt_ratio = 4

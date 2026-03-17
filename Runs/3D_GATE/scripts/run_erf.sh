@@ -143,12 +143,7 @@ validate() {
     fi
 
     # Find ERF executable
-    ERF_EXEC_PATH="$ERF_BUILD/Exec/DevTests/GATE"
-    if [[ ! -d "$ERF_EXEC_PATH" ]]; then
-        error "ERF executable directory not found: $ERF_EXEC_PATH"
-    fi
-
-    EXEC="$ERF_EXEC_PATH/erf_gate"
+    EXEC="$ERF_BUILD/Exec_dev/GATE/erf_gate"
     if [[ ! -x "$EXEC" ]]; then
         error "ERF executable not found or not executable: $EXEC"
     fi
