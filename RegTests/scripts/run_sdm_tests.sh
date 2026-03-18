@@ -101,7 +101,6 @@ EXEC_NAME="erf_exec"
 
 # Tests requiring specific executables (not consolidated)
 declare -A SPECIFIC_EXEC_MAP=(
-    ["SDM_SineMassFlux"]="erf_sinusoidal_mass_flux"
 )
 
 # Tests requiring input_sounding file
@@ -262,13 +261,6 @@ get_exec_file() {
         "${ERF_BUILD}/Exec/${exec_name}"
         "${ERF_BUILD}/bin/${exec_name}"
     )
-
-    # For specific executables, also check subdirectories where they are built
-    if [[ "$exec_name" == "erf_sinusoidal_mass_flux" ]]; then
-        candidates+=(
-            "${ERF_BUILD}/Exec_dev/sinusoidal_mass_flux/${exec_name}"
-        )
-    fi
 
     for candidate in "${candidates[@]}"; do
         if [[ -x "$candidate" ]]; then

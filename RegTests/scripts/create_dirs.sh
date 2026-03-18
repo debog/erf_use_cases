@@ -26,7 +26,7 @@ declare -A exec_map=(
     ["RICO"]="Exec/DevTests/RICO"
     ["MultiSpecies"]="Exec/DevTests/MultiSpeciesBubble"
     ["Congestus"]="Exec/DevTests/TemperatureSourceSpatial"
-    ["SineMassFlux"]="Exec/DevTests/sinusoidal_mass_flux"
+    ["SineMassFlux"]="Exec"
 )
 DEFAULT_EXEC_PATH="Exec/MoistRegTests/Bubble"
 
