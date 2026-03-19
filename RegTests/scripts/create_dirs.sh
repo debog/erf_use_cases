@@ -21,26 +21,12 @@ rootdir=$PWD
 ntasks=4
 outfile=out.$LCHOST.log
 
-# Associative array for executable mapping (pattern -> relative path)
-declare -A exec_map=(
-    ["RICO"]="Exec/DevTests/RICO"
-    ["MultiSpecies"]="Exec/DevTests/MultiSpeciesBubble"
-    ["Congestus"]="Exec/DevTests/TemperatureSourceSpatial"
-    ["SineMassFlux"]="Exec"
-)
-DEFAULT_EXEC_PATH="Exec/MoistRegTests/Bubble"
-
-# Function to get executable path for a given SDM test
-get_exec_path() {
-    local sdm=$1
-    for key in "${!exec_map[@]}"; do
-        if [[ "$sdm" == *"$key"* ]]; then
-            echo "${ERF_BUILD}/${exec_map[$key]}"
-            return
-        fi
-    done
-    echo "${ERF_BUILD}/${DEFAULT_EXEC_PATH}"
-}
+# Single executable for all cases
+EXEC="$ERF_BUILD/Exec/erf_exec"
+if [[ ! -x "$EXEC" ]]; then
+    echo "Error: ERF executable not found or not executable: $EXEC" >&2
+    exit 1
+fi
 
 runcmd=""
 if [[ "x$LCHOST" == "xdane" ]]; then
@@ -126,15 +112,6 @@ runtests="run_sims.sh"
 checktests="check_tests.sh"
 
 for sdm in ${tests[@]}; do
-
-    ERF_EXEC_PATH=$(get_exec_path "$sdm")
-    EXEC=$(ls ${ERF_EXEC_PATH}/erf_* 2>/dev/null || true)
-
-    # Validate executable exists
-    if [[ -z "$EXEC" || ! -x "$EXEC" ]]; then
-        echo "Warning: No executable found in ${ERF_EXEC_PATH} for $sdm; skipping..."
-        continue
-    fi
 
     inp_dir="$testdir/$sdm"
     if [ -d "$inp_dir" ]; then

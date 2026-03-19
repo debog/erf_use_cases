@@ -35,8 +35,6 @@ erf.plot_file_1 = plt        # prefix of plotfile name
 erf.plot_int_1 = 1          # output at initialization
 erf.plot_vars_1 = density
 erf.use_gravity = false
-erf.use_coriolis = false
-erf.use_rayleigh_damping = false
 erf.moisture_model = "SuperDroplets"
 
 super_droplets_moisture.initial_distribution_type = "uniform"

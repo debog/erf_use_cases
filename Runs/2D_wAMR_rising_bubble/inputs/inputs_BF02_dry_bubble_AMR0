@@ -56,7 +56,6 @@ particles.disable_plt = false
 
 # SOLVER CHOICES
 erf.use_gravity          = true
-erf.use_coriolis         = false
 
 erf.dycore_horiz_adv_type    = "Upwind_5th"
 erf.dycore_vert_adv_type     = "Upwind_5th"
@@ -67,7 +66,6 @@ erf.dryscal_vert_adv_type    = "Upwind_5th"
 erf.les_type        = "None"
 erf.pbl_type        = "None"
 erf.buoyancy_type   = 1
-erf.use_moist_background = false
 
 erf.molec_diff_type   = "ConstantAlpha"
 erf.dynamic_viscosity = 0.0 # [kg/(m-s)]

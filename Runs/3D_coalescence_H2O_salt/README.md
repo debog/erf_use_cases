@@ -1,6 +1,6 @@
 # 3D Coalescence H2O with Salt Test Case
 
-ERF simulation of 3D cloud droplet coalescence with water and salt, using the erf_bubble executable.
+ERF simulation of 3D cloud droplet coalescence with water and salt.
 
 ## Quick Start
 

@@ -12,7 +12,7 @@ NTASKS=4
 NNODES=1
 GPU_SUPPORT=true
 GPUS_PER_TASK=1
-EXEC=/g/g92/ghosh5/Codes/ERF-builds/tuolumne/Exec/MoistRegTests/Bubble/erf_bubble
+EXEC=/g/g92/ghosh5/Codes/ERF-builds/tuolumne/Exec/erf_exec
 INPUT=inputs_radius_lognormal_autorange_sampled
 
 echo "Running ERF for initial sampling (max_step = 0)"
