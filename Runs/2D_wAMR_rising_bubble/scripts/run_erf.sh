@@ -534,7 +534,36 @@ QUEUE="${OVERRIDE_QUEUE:-$(get_config "$PLATFORM" "queue")}"
 WALLTIME="${OVERRIDE_WALLTIME:-$(get_config "$PLATFORM" "walltime" "12:00:00")}"
 GPU_SUPPORT=$(get_config "$PLATFORM" "gpu_support" "false")
 GPUS_PER_TASK=$(get_config "$PLATFORM" "gpus_per_task" "1")
+CORES_PER_NODE=$(get_config "$PLATFORM" "cores_per_node" "4")
 ACCOUNT=$(get_config "$PLATFORM" "account")
+
+# Check if this is a particle splitting case (case name contains "ParSpl" or "wParSpl")
+if [[ "$CASE" == *"ParSpl"* ]]; then
+    info "Detected particle splitting case"
+
+    # Override nodes to 4 unless explicitly set by user
+    if [[ -z "$OVERRIDE_NNODES" ]]; then
+        NNODES=4
+        info "Setting NNODES=4 for particle splitting"
+    fi
+
+    # Calculate NTASKS based on platform unless explicitly set by user
+    if [[ -z "$OVERRIDE_NTASKS" ]]; then
+        NTASKS=$((NNODES * CORES_PER_NODE))
+        info "Setting NTASKS=$NTASKS (${NNODES} nodes × ${CORES_PER_NODE} cores/node)"
+    fi
+
+    # Matrix doesn't allow debug jobs with 4 nodes
+    if [[ "$PLATFORM" == "matrix" && "$MODE" == "interactive" ]]; then
+        if [[ -z "$DRY_RUN" ]]; then
+            error "Matrix does not allow interactive (debug) jobs with 4 nodes.
+       Use --dry-run to generate job scripts only, then submit with batch mode:
+         $0 -c $CASE -m batch
+       Or run on a different platform that supports larger debug jobs."
+        fi
+        warn "Matrix does not support interactive jobs with 4 nodes. Dry-run mode only."
+    fi
+fi
 
 debug "Platform config loaded:"
 debug "  scheduler=$SCHEDULER ntasks=$NTASKS nnodes=$NNODES"
