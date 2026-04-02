@@ -3,7 +3,7 @@ erf.prob_name = "Particles Over Witch of Agnesi Hill"
 
 erf.init_type = Isentropic
 
-max_step =  500
+max_step =  400
 
 amrex.fpe_trap_invalid = 1
 
@@ -34,6 +34,7 @@ tracer_particles.initial_distribution_type = box
 tracer_particles.particle_box_lo = 2.95 -1.0 -1.0
 tracer_particles.particle_box_hi = 3.00  2.0  1.0
 tracer_particles.place_randomly_in_cells = false
+particles.verbose = 1
 
 # TIME STEP CONTROL
 erf.fixed_dt           = 1E-3
