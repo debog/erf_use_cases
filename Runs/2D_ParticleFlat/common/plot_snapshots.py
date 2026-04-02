@@ -94,16 +94,27 @@ def get_fine_mesh_segments(ds):
     if ds.max_level == 0:
         return []
 
+    has_terrain = ("boxlib", "z_phys") in ds.field_list
     segments = []
-    field_tuple = ("boxlib", "z_phys")
+    field_tuple = ("boxlib", "z_phys") if has_terrain else None
 
     for level in range(1, ds.max_level + 1):
         grids = [g for g in ds.index.grids if g.Level == level]
         for grid in grids:
-            z_data = np.array(grid[field_tuple])  # (gx, gy, gz) cell-center z
-            gx, gy, gz = z_data.shape
-            jy_local = gy // 2
-            z_cc = z_data[:, jy_local, :]  # (gx, gz)
+            if has_terrain:
+                z_data = np.array(grid[field_tuple])  # (gx, gy, gz) cell-center z
+                gx, gy, gz = z_data.shape
+                jy_local = gy // 2
+                z_cc = z_data[:, jy_local, :]  # (gx, gz)
+            else:
+                # Flat terrain: compute uniform z cell-centers from grid edges
+                left = grid.LeftEdge.v
+                right = grid.RightEdge.v
+                shape = grid.ActiveDimensions
+                gx, gy, gz = int(shape[0]), int(shape[1]), int(shape[2])
+                dz = (right[2] - left[2]) / gz
+                z_cc_1d = np.arange(gz) * dz + left[2] + 0.5 * dz
+                z_cc = np.tile(z_cc_1d, (gx, 1))
 
             left = grid.LeftEdge.v
             right = grid.RightEdge.v
@@ -138,11 +149,21 @@ def load_snapshot(pltdir):
     """Return mesh fields and particle positions from a plotfile."""
     ds = yt.load(pltdir)
 
+    base_dims = ds.domain_dimensions
+    nx0, ny0, nz0 = base_dims
+
     # z_phys from level-0 covering grid (terrain mesh doesn't change with AMR)
-    cg = ds.covering_grid(
-        level=0, left_edge=ds.domain_left_edge, dims=ds.domain_dimensions
-    )
-    z_phys = cg["boxlib", "z_phys"].v[:, JY, :]        # (nx, nz)
+    has_terrain = ("boxlib", "z_phys") in ds.field_list
+    if has_terrain:
+        cg = ds.covering_grid(
+            level=0, left_edge=ds.domain_left_edge, dims=ds.domain_dimensions
+        )
+        z_phys = cg["boxlib", "z_phys"].v[:, JY, :]        # (nx, nz)
+    else:
+        # Flat terrain: uniform z grid
+        dz = ds.domain_width[2].v / nz0
+        z_cc_1d = np.arange(nz0) * dz + ds.domain_left_edge[2].v + 0.5 * dz
+        z_phys = np.tile(z_cc_1d, (nx0, 1))  # (nx, nz) uniform
 
     # Composite tracer count across AMR levels (summed over all y-slices)
     tc = composite_particle_count(ds, "tracer_particles_count")
