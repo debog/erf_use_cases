@@ -176,8 +176,17 @@ def load_snapshot(pltdir):
     x_vel    = cg0["boxlib", "x_velocity"].v[:, JY, :]
     z_vel    = cg0["boxlib", "z_velocity"].v[:, JY, :]
 
-    # Composite tracer count across AMR levels (summed over all y-slices)
-    tc = composite_particle_count(ds, "tracer_particles_count")
+    # Check if tracer particle fields exist
+    has_particles = ("boxlib", "tracer_particles_count") in ds.field_list
+
+    tc = None
+    px = np.array([])
+    pz = np.array([])
+    if has_particles:
+        tc = composite_particle_count(ds, "tracer_particles_count")
+        ad = ds.all_data()
+        px = ad["all", "particle_position_x"].v
+        pz = ad["all", "particle_position_z"].v
 
     # Fine-level mesh segments for overlay
     fine_mesh = get_fine_mesh_segments(ds)
@@ -193,11 +202,6 @@ def load_snapshot(pltdir):
     # z_phys gives cell-center height; approximate bottom edge
     terrain_z = z_phys[:, 0] - 0.5 * (z_phys[:, 1] - z_phys[:, 0])
 
-    # Particle positions (all particles, not just midplane — quasi-2D domain)
-    ad = ds.all_data()
-    px = ad["all", "particle_position_x"].v
-    pz = ad["all", "particle_position_z"].v
-
     time = float(ds.current_time)
     step = int(re.search(r"plt(\d+)", pltdir).group(1))
 
@@ -206,6 +210,7 @@ def load_snapshot(pltdir):
         density=density, pressure=pressure,
         x_vel=x_vel, z_vel=z_vel,
         tracer_count=tc,
+        has_particles=has_particles,
         fine_mesh=fine_mesh,
         px=px, pz=pz,
         time=time, step=step,
@@ -215,14 +220,21 @@ def load_snapshot(pltdir):
 
 
 def plot_snapshot(data, outpath):
-    """Create a 3x2 panel figure for one snapshot.
+    """Create a panel figure for one snapshot.
 
-    Layout:
+    With particles (3x2):
       Row 0: density,              pressure
       Row 1: x-velocity,           z-velocity
       Row 2: tracer particle count, particle positions
+
+    Without particles (2x2):
+      Row 0: density,              pressure
+      Row 1: x-velocity,           z-velocity
     """
-    fig, axes = plt.subplots(3, 2, figsize=(20, 10), sharex=True, sharey=True)
+    has_particles = data["has_particles"]
+    nrows = 3 if has_particles else 2
+    figheight = 10 if has_particles else 7
+    fig, axes = plt.subplots(nrows, 2, figsize=(20, figheight), sharex=True, sharey=True)
     fig.suptitle(f"Step {data['step']},  t = {data['time']:.4f} s", fontsize=14)
 
     x_cc    = data["x_cc"]
@@ -290,6 +302,8 @@ def plot_snapshot(data, outpath):
     add_fine_mesh(ax)
     ax.set_title("x-velocity")
     ax.set_ylabel("z (m)")
+    if not has_particles:
+        ax.set_xlabel("x (m)")
     format_ax(ax)
 
     # --- (1,1) z-velocity ---
@@ -301,31 +315,34 @@ def plot_snapshot(data, outpath):
     add_terrain(ax)
     add_fine_mesh(ax)
     ax.set_title("z-velocity")
+    if not has_particles:
+        ax.set_xlabel("x (m)")
     format_ax(ax)
 
-    # --- (2,0) Tracer particle count ---
-    ax = axes[2, 0]
-    tc = data["tracer_count"]
-    tc_max = max(tc.max(), 1.0)
-    pcm = ax.pcolormesh(X2, Z2, tc, cmap="YlOrRd", vmin=0, vmax=tc_max,
-                        shading="flat")
-    add_colorbar(ax, pcm)
-    add_terrain(ax)
-    add_fine_mesh(ax)
-    ax.set_title("Tracer particle count (Eulerian)")
-    ax.set_xlabel("x (m)")
-    ax.set_ylabel("z (m)")
-    format_ax(ax)
+    if has_particles:
+        # --- (2,0) Tracer particle count ---
+        ax = axes[2, 0]
+        tc = data["tracer_count"]
+        tc_max = max(tc.max(), 1.0)
+        pcm = ax.pcolormesh(X2, Z2, tc, cmap="YlOrRd", vmin=0, vmax=tc_max,
+                            shading="flat")
+        add_colorbar(ax, pcm)
+        add_terrain(ax)
+        add_fine_mesh(ax)
+        ax.set_title("Tracer particle count (Eulerian)")
+        ax.set_xlabel("x (m)")
+        ax.set_ylabel("z (m)")
+        format_ax(ax)
 
-    # --- (2,1) Particle scatter ---
-    ax = axes[2, 1]
-    add_terrain(ax)
-    if len(data["px"]) > 0:
-        ax.scatter(data["px"], data["pz"], s=8, c="dodgerblue",
-                   edgecolors="navy", linewidths=0.3, zorder=10, alpha=0.8)
-    ax.set_title(f"Particle positions (N={len(data['px'])})")
-    ax.set_xlabel("x (m)")
-    format_ax(ax)
+        # --- (2,1) Particle scatter ---
+        ax = axes[2, 1]
+        add_terrain(ax)
+        if len(data["px"]) > 0:
+            ax.scatter(data["px"], data["pz"], s=8, c="dodgerblue",
+                       edgecolors="navy", linewidths=0.3, zorder=10, alpha=0.8)
+        ax.set_title(f"Particle positions (N={len(data['px'])})")
+        ax.set_xlabel("x (m)")
+        format_ax(ax)
 
     fig.tight_layout()
     fig.savefig(outpath, dpi=150, bbox_inches="tight")
