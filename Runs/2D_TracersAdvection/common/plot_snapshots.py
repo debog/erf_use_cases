@@ -16,6 +16,7 @@ import re
 import sys
 
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import yt
 
@@ -44,9 +45,9 @@ def composite_particle_count(ds, field_name):
     """Composite particle count from all AMR levels onto the level-0 grid.
 
     Particle counts are deposited per-level (L0 counts particles on L0, L1
-    counts particles on L1, etc.) so contributions are simply summed.  All
-    y-slices are summed since this is a quasi-2D domain.  Fine-level cells
-    are summed into their parent coarse cell.
+    counts particles on L1, etc.) so contributions are simply summed.
+    Takes the y-midslice.  Fine-level cells are summed into their parent
+    coarse cell.
     """
     base_dims = ds.domain_dimensions  # level-0 cell counts
     nx0, ny0, nz0 = base_dims
@@ -61,7 +62,8 @@ def composite_particle_count(ds, field_name):
         grids = [g for g in ds.index.grids if g.Level == level]
         for grid in grids:
             data = np.array(grid[field_tuple])  # (gx, gy, gz)
-            grid_slice = data.sum(axis=1)  # sum over y -> (gx, gz)
+            jy_mid = data.shape[1] // 2
+            grid_slice = data[:, jy_mid, :]  # midslice in y -> (gx, gz)
 
             left = grid.LeftEdge.v
             right = grid.RightEdge.v
@@ -165,6 +167,15 @@ def load_snapshot(pltdir):
         z_cc_1d = np.arange(nz0) * dz + ds.domain_left_edge[2].v + 0.5 * dz
         z_phys = np.tile(z_cc_1d, (nx0, 1))  # (nx, nz) uniform
 
+    # Eulerian fields from level-0 covering grid
+    cg0 = ds.covering_grid(
+        level=0, left_edge=ds.domain_left_edge, dims=ds.domain_dimensions
+    )
+    density  = cg0["boxlib", "density"].v[:, JY, :]
+    pressure = cg0["boxlib", "pressure"].v[:, JY, :]
+    x_vel    = cg0["boxlib", "x_velocity"].v[:, JY, :]
+    z_vel    = cg0["boxlib", "z_velocity"].v[:, JY, :]
+
     # Composite tracer count across AMR levels (summed over all y-slices)
     tc = composite_particle_count(ds, "tracer_particles_count")
 
@@ -192,6 +203,8 @@ def load_snapshot(pltdir):
 
     return dict(
         x_cc=x_cc, z_phys=z_phys, terrain_z=terrain_z,
+        density=density, pressure=pressure,
+        x_vel=x_vel, z_vel=z_vel,
         tracer_count=tc,
         fine_mesh=fine_mesh,
         px=px, pz=pz,
@@ -202,77 +215,117 @@ def load_snapshot(pltdir):
 
 
 def plot_snapshot(data, outpath):
-    """Create a two-panel figure for one snapshot."""
-    fig, (ax_l, ax_r) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+    """Create a 3x2 panel figure for one snapshot.
+
+    Layout:
+      Row 0: density,              pressure
+      Row 1: x-velocity,           z-velocity
+      Row 2: tracer particle count, particle positions
+    """
+    fig, axes = plt.subplots(3, 2, figsize=(20, 10), sharex=True, sharey=True)
     fig.suptitle(f"Step {data['step']},  t = {data['time']:.4f} s", fontsize=14)
 
     x_cc    = data["x_cc"]
     z_phys  = data["z_phys"]
     terrain = data["terrain_z"]
-    tc      = data["tracer_count"]
     nx, nz  = z_phys.shape
 
     # Build 2D coordinate arrays for pcolormesh
-    # x-edges (uniform)
     dx = x_cc[1] - x_cc[0]
     x_edges = np.concatenate([[x_cc[0] - 0.5 * dx], x_cc + 0.5 * dx])
 
-    # z-edges from z_phys cell centers (per column)
     z_edges = np.zeros((nx, nz + 1))
     z_edges[:, 0] = z_phys[:, 0] - 0.5 * (z_phys[:, 1] - z_phys[:, 0])
     z_edges[:, -1] = z_phys[:, -1] + 0.5 * (z_phys[:, -1] - z_phys[:, -2])
     for k in range(1, nz):
         z_edges[:, k] = 0.5 * (z_phys[:, k - 1] + z_phys[:, k])
 
-    # pcolormesh needs (nx+1, nz+1) vertex arrays
-    z_ext = np.vstack([z_edges, z_edges[-1:, :]])  # repeat last row for right edge
-    X2 = np.tile(x_edges[:, np.newaxis], (1, nz + 1))  # (nx+1, nz+1)
-    Z2 = z_ext  # (nx+1, nz+1)
+    z_ext = np.vstack([z_edges, z_edges[-1:, :]])
+    X2 = np.tile(x_edges[:, np.newaxis], (1, nz + 1))
+    Z2 = z_ext
 
-    # --- Left panel: tracer_particles_count ---
+    def add_terrain(ax):
+        ax.fill_between(x_cc, 0, terrain, color="saddlebrown", alpha=0.9, zorder=5)
+        ax.plot(x_cc, terrain, color="black", linewidth=0.8, zorder=6)
+
+    def add_fine_mesh(ax):
+        fine_kw = dict(color="blue", linewidth=0.15, alpha=0.4, zorder=3)
+        for x_seg, z_seg in data.get("fine_mesh", []):
+            ax.plot(x_seg, z_seg, **fine_kw)
+
+    def add_colorbar(ax, pcm):
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="2%", pad=0.05)
+        fig.colorbar(pcm, cax=cax)
+
+    def format_ax(ax):
+        ax.set_xlim(data["prob_lo"][0], data["prob_hi"][0])
+        ax.set_ylim(0, data["prob_hi"][2])
+        ax.set_aspect("equal")
+
+    # --- (0,0) Density ---
+    ax = axes[0, 0]
+    pcm = ax.pcolormesh(X2, Z2, data["density"], cmap="viridis", shading="flat")
+    add_colorbar(ax, pcm)
+    add_terrain(ax)
+    add_fine_mesh(ax)
+    ax.set_title("Density")
+    ax.set_ylabel("z (m)")
+    format_ax(ax)
+
+    # --- (0,1) Pressure ---
+    ax = axes[0, 1]
+    pcm = ax.pcolormesh(X2, Z2, data["pressure"], cmap="viridis", shading="flat")
+    add_colorbar(ax, pcm)
+    add_terrain(ax)
+    add_fine_mesh(ax)
+    ax.set_title("Pressure")
+    format_ax(ax)
+
+    # --- (1,0) x-velocity ---
+    ax = axes[1, 0]
+    pcm = ax.pcolormesh(X2, Z2, data["x_vel"], cmap="RdBu_r", shading="flat")
+    add_colorbar(ax, pcm)
+    add_terrain(ax)
+    add_fine_mesh(ax)
+    ax.set_title("x-velocity")
+    ax.set_ylabel("z (m)")
+    format_ax(ax)
+
+    # --- (1,1) z-velocity ---
+    ax = axes[1, 1]
+    vmax_w = max(abs(data["z_vel"].min()), abs(data["z_vel"].max()), 1e-6)
+    pcm = ax.pcolormesh(X2, Z2, data["z_vel"], cmap="RdBu_r",
+                        vmin=-vmax_w, vmax=vmax_w, shading="flat")
+    add_colorbar(ax, pcm)
+    add_terrain(ax)
+    add_fine_mesh(ax)
+    ax.set_title("z-velocity")
+    format_ax(ax)
+
+    # --- (2,0) Tracer particle count ---
+    ax = axes[2, 0]
+    tc = data["tracer_count"]
     tc_max = max(tc.max(), 1.0)
-    pcm = ax_l.pcolormesh(X2, Z2, tc, cmap="YlOrRd", vmin=0, vmax=tc_max,
-                           shading="flat")
-    fig.colorbar(pcm, ax=ax_l, label="tracer count", shrink=0.8)
+    pcm = ax.pcolormesh(X2, Z2, tc, cmap="YlOrRd", vmin=0, vmax=tc_max,
+                        shading="flat")
+    add_colorbar(ax, pcm)
+    add_terrain(ax)
+    add_fine_mesh(ax)
+    ax.set_title("Tracer particle count (Eulerian)")
+    ax.set_xlabel("x (m)")
+    ax.set_ylabel("z (m)")
+    format_ax(ax)
 
-    # Draw mesh lines (terrain-following grid)
-    mesh_kw = dict(color="gray", linewidth=0.2, alpha=0.6, zorder=2)
-    # Horizontal lines (constant k): each row of Z2/X2
-    for k in range(nz + 1):
-        ax_l.plot(X2[:, k], Z2[:, k], **mesh_kw)
-    # Vertical lines (constant i): each column follows terrain
-    for i in range(nx + 1):
-        ax_l.plot(X2[i, :] * np.ones(nz + 1), Z2[i, :], **mesh_kw)
-
-    # Draw fine-level mesh lines (terrain-following)
-    fine_kw = dict(color="blue", linewidth=0.15, alpha=0.4, zorder=3)
-    for x_seg, z_seg in data.get("fine_mesh", []):
-        ax_l.plot(x_seg, z_seg, **fine_kw)
-
-    ax_l.fill_between(x_cc, 0, terrain, color="saddlebrown", alpha=0.9, zorder=5)
-    ax_l.plot(x_cc, terrain, color="black", linewidth=0.8, zorder=6)
-
-    ax_l.set_xlim(data["prob_lo"][0], data["prob_hi"][0])
-    ax_l.set_ylim(0, data["prob_hi"][2])
-    ax_l.set_xlabel("x (m)")
-    ax_l.set_ylabel("z (m)")
-    ax_l.set_title("Tracer particle count (Eulerian)")
-    ax_l.set_aspect("equal")
-
-    # --- Right panel: particle scatter ---
-    ax_r.fill_between(x_cc, 0, terrain, color="saddlebrown", alpha=0.9, zorder=5)
-    ax_r.plot(x_cc, terrain, color="black", linewidth=0.8, zorder=6)
-
+    # --- (2,1) Particle scatter ---
+    ax = axes[2, 1]
+    add_terrain(ax)
     if len(data["px"]) > 0:
-        ax_r.scatter(data["px"], data["pz"], s=8, c="dodgerblue",
-                     edgecolors="navy", linewidths=0.3, zorder=10, alpha=0.8)
-
-    ax_r.set_xlim(data["prob_lo"][0], data["prob_hi"][0])
-    ax_r.set_ylim(0, data["prob_hi"][2])
-    ax_r.set_xlabel("x (m)")
-    ax_r.set_ylabel("z (m)")
-    ax_r.set_title(f"Particle positions (N={len(data['px'])})")
-    ax_r.set_aspect("equal")
+        ax.scatter(data["px"], data["pz"], s=8, c="dodgerblue",
+                   edgecolors="navy", linewidths=0.3, zorder=10, alpha=0.8)
+    ax.set_title(f"Particle positions (N={len(data['px'])})")
+    ax.set_xlabel("x (m)")
+    format_ax(ax)
 
     fig.tight_layout()
     fig.savefig(outpath, dpi=150, bbox_inches="tight")
