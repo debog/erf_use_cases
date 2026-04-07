@@ -7,7 +7,11 @@
 #   ./run_erf.sh [OPTIONS]
 #
 # Options:
-#   -c, --case=NAME       Input case name (default: BF02_dry_bubble_AMR1)
+#   -c, --case=NAME       Input case name(s) (space-separated list, supports wildcards)
+#                         Default: BF02_dry_bubble_AMR1
+#                         Examples: -c BF02_moist_bubble_AMR1
+#                                   -c BF02_moist_bubble_AMR0 BF02_moist_bubble_AMR1
+#                                   -c BF02_moist_bubble_AMR*
 #   -m, --mode=MODE       Execution mode: interactive (default) or batch
 #   -n, --ntasks=N        Override number of MPI tasks
 #   -N, --nnodes=N        Override number of nodes
@@ -476,7 +480,7 @@ if [[ $# -eq 0 ]]; then
 fi
 
 # Parse command line arguments
-CASE="${CASE:-}"
+CASES=()
 MODE="interactive"
 OVERRIDE_NTASKS=""
 OVERRIDE_NNODES=""
@@ -489,7 +493,30 @@ VERBOSE=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -c|--case=*)
-            [[ "$1" == -c ]] && { shift; CASE="$1"; } || CASE="${1#*=}" ;;
+            if [[ "$1" == -c ]]; then
+                shift
+                # Collect all non-option arguments as case names
+                while [[ $# -gt 0 && "$1" != -* ]]; do
+                    # Expand wildcards by checking if pattern matches any input files
+                    if [[ "$1" == *"*"* ]] || [[ "$1" == *"?"* ]]; then
+                        # This is a glob pattern - expand it
+                        shopt -s nullglob
+                        matched_files=("$INPUTS_DIR"/inputs_$1)
+                        shopt -u nullglob
+                        for matched in "${matched_files[@]}"; do
+                            [[ -f "$matched" ]] && CASES+=("$(basename "$matched" | sed 's/^inputs_//')")
+                        done
+                    else
+                        CASES+=("$1")
+                    fi
+                    shift
+                done
+                # Already shifted, so continue without shift at end
+                continue
+            else
+                CASES+=("${1#*=}")
+            fi
+            ;;
         -m|--mode=*)
             [[ "$1" == -m ]] && { shift; MODE="$1"; } || MODE="${1#*=}" ;;
         -n|--ntasks=*)
@@ -513,7 +540,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Set defaults
-CASE="${CASE:-$DEFAULT_CASE}"
+if [[ ${#CASES[@]} -eq 0 ]]; then
+    CASES=("$DEFAULT_CASE")
+fi
 
 # Auto-detect platform from LCHOST, default to 'desktop'
 if [[ -z "$LCHOST" ]]; then
@@ -522,6 +551,16 @@ if [[ -z "$LCHOST" ]]; then
 else
     PLATFORM="$LCHOST"
 fi
+
+# Process each case
+for CASE in "${CASES[@]}"; do
+    if [[ ${#CASES[@]} -gt 1 ]]; then
+        info ""
+        info "=========================================="
+        info "Processing case: $CASE"
+        info "=========================================="
+        info ""
+    fi
 
 # Validate inputs and environment
 validate
@@ -607,5 +646,7 @@ case "$MODE" in
         error "Unknown mode: $MODE (use 'interactive' or 'batch')"
         ;;
 esac
+
+done  # End of case loop
 
 info "Done."

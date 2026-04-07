@@ -6,7 +6,10 @@
 #   ./plot.sh [OPTIONS]
 #
 # Options:
-#   -c, --case=NAME       Input case name (required if not using -r)
+#   -c, --case=NAME       Input case name(s) (space-separated list, supports wildcards)
+#                         Examples: -c BF02_moist_bubble_AMR1
+#                                   -c BF02_moist_bubble_AMR0 BF02_moist_bubble_AMR1
+#                                   -c BF02_moist_bubble_AMR*
 #   -r, --run=DIR         Run directory to process (alternative to -c)
 #   -o, --output=DIR      Output directory for plots (default: <run_dir>/plots)
 #   -p, --with-particles  Include particle position plots
@@ -26,10 +29,16 @@
 #   # List available cases
 #   ./plot.sh -l
 #
-#   # Plot qc for a moist bubble case
+#   # Plot qc for a single moist bubble case
 #   ./plot.sh -c BF02_moist_bubble_AMR1 -f qc
 #
-#   # Plot multiple fields
+#   # Plot for multiple cases
+#   ./plot.sh -c BF02_moist_bubble_AMR0 BF02_moist_bubble_AMR1 -f qc
+#
+#   # Plot for cases matching a pattern
+#   ./plot.sh -c BF02_moist_bubble_AMR* -f qc
+#
+#   # Plot multiple fields for a case
 #   ./plot.sh -c BF02_moist_bubble_AMR1 -f qc super_droplets_moisture_number_density
 #
 #   # Plot with particles and use all CPUs
@@ -81,7 +90,7 @@ if [[ $# -eq 0 ]]; then
 fi
 
 # Parse arguments
-CASE=""
+CASES=()
 RUN_DIR=""
 OUTPUT_DIR=""
 WITH_PARTICLES=""
@@ -94,7 +103,30 @@ VERBOSE=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -c|--case=*)
-            [[ "$1" == -c ]] && { shift; CASE="$1"; } || CASE="${1#*=}" ;;
+            if [[ "$1" == -c ]]; then
+                shift
+                # Collect all non-option arguments as case names
+                while [[ $# -gt 0 && "$1" != -* ]]; do
+                    # Expand wildcards by checking if pattern matches any input files
+                    if [[ "$1" == *"*"* ]] || [[ "$1" == *"?"* ]]; then
+                        # This is a glob pattern - expand it
+                        shopt -s nullglob
+                        matched_files=("$INPUTS_DIR"/inputs_$1)
+                        shopt -u nullglob
+                        for matched in "${matched_files[@]}"; do
+                            [[ -f "$matched" ]] && CASES+=("$(basename "$matched" | sed 's/^inputs_//')")
+                        done
+                    else
+                        CASES+=("$1")
+                    fi
+                    shift
+                done
+                # Already shifted, so continue without shift at end
+                continue
+            else
+                CASES+=("${1#*=}")
+            fi
+            ;;
         -r|--run=*)
             if [[ "$1" == -r ]]; then
                 shift
@@ -156,23 +188,33 @@ else
 fi
 
 # Determine run directories to process
-if [[ -n "$CASE" ]]; then
-    # Case name provided - find matching run directory for this platform
-    debug "Looking for run directories matching case: $CASE, platform: $PLATFORM"
+if [[ ${#CASES[@]} -gt 0 ]]; then
+    # Case name(s) provided - find matching run directories for this platform
+    RUN_DIRS=()
+    for CASE in "${CASES[@]}"; do
+        debug "Looking for run directories matching case: $CASE, platform: $PLATFORM"
 
-    # Pattern: .run_${CASE}.${PLATFORM}.*
-    RUN_DIRS=($(ls -d "$ROOT_DIR"/.run_${CASE}.${PLATFORM}.* 2>/dev/null | sort -r))
+        # Pattern: .run_${CASE}.${PLATFORM}.*
+        CASE_DIRS=($(ls -d "$ROOT_DIR"/.run_${CASE}.${PLATFORM}.* 2>/dev/null | sort -r))
+
+        if [[ ${#CASE_DIRS[@]} -eq 0 ]]; then
+            warn "No run directories found for case '$CASE' on platform '$PLATFORM'"
+            continue
+        fi
+
+        if [[ ${#CASE_DIRS[@]} -gt 1 ]]; then
+            info "Found ${#CASE_DIRS[@]} matching run directories for $CASE, using most recent: $(basename "${CASE_DIRS[0]}")"
+        else
+            info "Found run directory for $CASE: $(basename "${CASE_DIRS[0]}")"
+        fi
+
+        # Add the most recent run directory for this case
+        RUN_DIRS+=("${CASE_DIRS[0]}")
+    done
 
     if [[ ${#RUN_DIRS[@]} -eq 0 ]]; then
-        error "No run directories found for case '$CASE' on platform '$PLATFORM'
-       Pattern: .run_${CASE}.${PLATFORM}.*
+        error "No run directories found for any specified case on platform '$PLATFORM'
        Available directories: $(ls -d "$ROOT_DIR"/.run_* 2>/dev/null | xargs -n1 basename | head -5)"
-    fi
-
-    if [[ ${#RUN_DIRS[@]} -gt 1 ]]; then
-        info "Found ${#RUN_DIRS[@]} matching run directories, using most recent: $(basename "${RUN_DIRS[0]}")"
-    else
-        info "Found run directory: $(basename "${RUN_DIRS[0]}")"
     fi
 elif [[ ${#RUN_DIR_CANDIDATES[@]} -gt 0 ]]; then
     # Run directory explicitly provided with -r
