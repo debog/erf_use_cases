@@ -41,7 +41,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
-INPUTS_DIR="$SCRIPT_DIR"
+INPUTS_DIR="$ROOT_DIR/inputs"
 
 # Colors
 if [[ -t 1 ]]; then

@@ -53,7 +53,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 CONFIG_FILE="$SCRIPT_DIR/platforms.conf"
-INPUTS_DIR="$SCRIPT_DIR"
+INPUTS_DIR="$ROOT_DIR/inputs"
 
 # =============================================================================
 # Color output (disabled if not a terminal)
