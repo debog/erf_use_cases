@@ -12,6 +12,7 @@
 #   -l, --list            List available SDM tests
 #   --output-on-failure   Show test output when a test fails
 #   --rerun-failed        Rerun only tests that failed in the previous run
+#   --ctest-like          Use a CTest-like MPI launch pattern for local repros
 #   -v, --verbose         Enable verbose output
 #   -d, --dry-run         Show what would be executed without running
 #   -h, --help            Show this help message
@@ -21,6 +22,7 @@
 #   ERF_BUILD             Path to ERF build directory (required)
 #   LCHOST                Platform identifier (auto-detected from HOSTNAME if unset)
 #   ERF_LLNL_GOLDFILES_DIR  Gold files directory for LLNL machines (required on dane/matrix/tuolumne)
+#   MPIEXEC_PREFLAGS      Extra launcher flags inserted before the rank count
 #
 # Gold Files Location:
 #   dane:      $ERF_LLNL_GOLDFILES_DIR/dane/
@@ -41,6 +43,8 @@ DRY_RUN=""
 SELECTED_TESTS=""
 OUTPUT_ON_FAILURE=""
 RERUN_FAILED=""
+CTEST_LIKE=""
+MPIEXEC_PREFLAGS="${MPIEXEC_PREFLAGS:-}"
 FAILED_TESTS_FILE="$SCRIPT_DIR/.failed_tests"
 
 # =============================================================================
@@ -170,7 +174,15 @@ setup_mpi_command() {
             MPI_FCOMP_CMD="srun -n 1 -p pdebug"
             ;;
         matrix)
-            MPI_CMD="srun -p pdebug -n $NTASKS -G $NTASKS -N 1"
+            if [[ -n "$CTEST_LIKE" ]]; then
+                local matrix_preflags="${MPIEXEC_PREFLAGS:--N 1 --gpus-per-task=1}"
+                MPI_CMD="srun $matrix_preflags -n $NTASKS"
+            else
+                MPI_CMD="srun -p pdebug -n $NTASKS -G $NTASKS -N 1"
+                if [[ -n "$MPIEXEC_PREFLAGS" ]]; then
+                    MPI_CMD+=" $MPIEXEC_PREFLAGS"
+                fi
+            fi
             MPI_FCOMP_CMD="srun -p pdebug -n 1 -G 1 -N 1"
             ;;
         tuolumne)
@@ -472,6 +484,7 @@ run_tests() {
     echo -e "${BOLD}Running SDM Regression Tests${NC}"
     echo "Platform:   $PLATFORM"
     echo "MPI tasks:  $NTASKS"
+    echo "MPI launch: $MPI_CMD"
     echo "Gold files: $GOLDFILES_DIR"
     echo ""
     echo "========================================"
@@ -592,6 +605,10 @@ parse_args() {
                 ;;
             --rerun-failed)
                 RERUN_FAILED=1
+                shift
+                ;;
+            --ctest-like)
+                CTEST_LIKE=1
                 shift
                 ;;
             -h|--help)
