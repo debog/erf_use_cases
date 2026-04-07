@@ -15,6 +15,9 @@ import os
 import re
 import sys
 
+# Set matplotlib backend to non-interactive to avoid X11 issues
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
@@ -350,11 +353,34 @@ def plot_snapshot(data, outpath):
 
 
 if __name__ == "__main__":
+    num_plotted = 0
+    num_skipped = 0
+
     for pdir in plt_dirs:
         step = int(re.search(r"plt(\d+)", pdir).group(1))
         outpath = os.path.join(OUT_DIR, f"snapshot_{step:05d}.png")
-        print(f"Plotting {os.path.basename(pdir)} ...", end=" ", flush=True)
-        data = load_snapshot(pdir)
-        plot_snapshot(data, outpath)
-        print("done")
+
+        # Check if plot exists and is newer than the plotfile
+        should_plot = True
+        if os.path.exists(outpath):
+            plt_mtime = os.path.getmtime(pdir)
+            plot_mtime = os.path.getmtime(outpath)
+
+            if plot_mtime > plt_mtime:
+                # Plot is newer than data, skip it
+                should_plot = False
+                num_skipped += 1
+                print(f"Plotting {os.path.basename(pdir)} ... skipped (up to date)")
+            else:
+                # Plot is older, delete and regenerate
+                os.remove(outpath)
+
+        if should_plot:
+            print(f"Plotting {os.path.basename(pdir)} ...", end=" ", flush=True)
+            data = load_snapshot(pdir)
+            plot_snapshot(data, outpath)
+            print("done")
+            num_plotted += 1
+
     print(f"\nPlots saved to {OUT_DIR}/")
+    print(f"Generated: {num_plotted}, Skipped: {num_skipped}, Total: {len(plt_dirs)}")

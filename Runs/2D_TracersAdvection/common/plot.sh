@@ -251,8 +251,8 @@ for RUN_DIR in "${RUN_DIRS[@]}"; do
     info "  Output: $CURRENT_OUTPUT_DIR"
     echo
 
-    # Run the plot script
-    python3 "$PLOT_SCRIPT" "$RUN_DIR"
+    # Run the plot script (set non-interactive backend to avoid X11 issues)
+    MPLBACKEND=Agg python3 "$PLOT_SCRIPT" "$RUN_DIR"
 
     echo
     info "Done! Plots saved to $CURRENT_OUTPUT_DIR"
