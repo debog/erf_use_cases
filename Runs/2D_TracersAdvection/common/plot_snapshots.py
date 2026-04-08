@@ -40,8 +40,10 @@ plt_dirs = sorted(
 if not plt_dirs:
     sys.exit(f"No plotfiles found in {RUN_DIR}")
 
-# y-slice index (midplane of the 8-cell y-direction)
-JY = 4
+# y-slice index (midplane); computed from first plotfile
+_ds0 = yt.load(plt_dirs[0])
+JY = _ds0.domain_dimensions[1] // 2
+del _ds0
 
 
 def composite_particle_count(ds, field_name):
