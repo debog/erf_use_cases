@@ -170,6 +170,10 @@ def get_midplane_slice(ds, field_name):
             y_mid_idx = grid_data.shape[1] // 2
             grid_slice = grid_data[:, y_mid_idx, :].T  # Shape: (nz, nx)
 
+            # Debug: check if grid has data
+            if max_level > 0 and grid_idx == 0:
+                print(f"  Level {level}, Grid 0: shape={grid_slice.shape}, range=[{grid_slice.min():.2e}, {grid_slice.max():.2e}], nonzero={np.sum(grid_slice > 0)}")
+
             # Get grid boundaries in physical space
             left_x, left_y, left_z = grid.LeftEdge.to('m').value
             right_x, right_y, right_z = grid.RightEdge.to('m').value
@@ -189,6 +193,18 @@ def get_midplane_slice(ds, field_name):
 
             # Place data only where this level owns the cells
             owner_mask = level_owner[k_start:k_end, i_start:i_end] == level
+
+            # Debug: check shapes
+            expected_shape = (k_end - k_start, i_end - i_start)
+            if max_level > 0 and grid_idx == 0:
+                print(f"    Upsampled shape: {grid_slice_upsampled.shape}, Expected: {expected_shape}, owner_mask shape: {owner_mask.shape}, owner_mask.sum: {owner_mask.sum()}")
+
+            # Check for shape mismatch
+            if grid_slice_upsampled.shape != expected_shape:
+                print(f"  WARNING: Shape mismatch at Level {level}, Grid {grid_idx}!")
+                print(f"    grid_slice_upsampled: {grid_slice_upsampled.shape}, expected: {expected_shape}")
+                print(f"    Skipping this grid")
+                continue
 
             # Use np.where or copyto to ensure proper assignment
             region = field_2d_composite[k_start:k_end, i_start:i_end].copy()
