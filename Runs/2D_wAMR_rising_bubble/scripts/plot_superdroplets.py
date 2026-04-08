@@ -116,25 +116,6 @@ def get_midplane_slice(ds, field_name):
     base_dims = ds.domain_dimensions
     field_tuple = ('boxlib', field_name)
 
-    # For particle-derived fields, check if they exist on refined grids
-    # If not, only use base level data
-    if max_level > 0:
-        # Check if field has data on level 1
-        level_1_grids = [g for g in ds.index.grids if g.Level == 1]
-        if len(level_1_grids) > 0:
-            test_grid = level_1_grids[0]
-            try:
-                test_data = np.array(test_grid[field_tuple])
-                has_refined_data = np.sum(np.abs(test_data)) > 0
-                if not has_refined_data:
-                    print(f"  NOTE: Field '{field_name}' appears to only exist at base level (Level 0)")
-                    print(f"        Using base level data only for this particle-derived field")
-                    max_level = 0  # Force to use only base level
-            except:
-                print(f"  NOTE: Could not read field '{field_name}' from refined grids")
-                print(f"        Using base level data only")
-                max_level = 0
-
     # Calculate finest resolution dimensions
     dims_finest = base_dims * (2 ** max_level) if max_level > 0 else base_dims
 
