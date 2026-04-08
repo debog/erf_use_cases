@@ -632,7 +632,7 @@ for CASE in "${CASES[@]}"; do
     INP="inputs_${CASE}"
 
     # Build extra arguments for ERF
-    ERF_EXTRA_ARGS=""
+    ERF_EXTRA_ARGS="erf.coupling_type  = \"OneWay\""
     [[ -n "$MAX_STEPS" ]] && ERF_EXTRA_ARGS="max_step=$MAX_STEPS"
 
     # Generate run.sh and erf.job scripts in the run directory
