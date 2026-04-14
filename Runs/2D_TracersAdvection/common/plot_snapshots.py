@@ -40,8 +40,10 @@ plt_dirs = sorted(
 if not plt_dirs:
     sys.exit(f"No plotfiles found in {RUN_DIR}")
 
-# y-slice index (midplane of the 8-cell y-direction)
-JY = 4
+# y-slice index (midplane); computed from first plotfile
+_ds0 = yt.load(plt_dirs[0])
+JY = _ds0.domain_dimensions[1] // 2
+del _ds0
 
 
 def composite_particle_count(ds, field_name):
@@ -49,14 +51,16 @@ def composite_particle_count(ds, field_name):
 
     Particle counts are deposited per-level (L0 counts particles on L0, L1
     counts particles on L1, etc.) so contributions are simply summed.
-    Takes the y-midslice.  Fine-level cells are summed into their parent
-    coarse cell.
+    Takes the y-midslice.  Fine-level cells are mapped to their parent
+    coarse cell via cell-center coordinates (works for any number of AMR
+    levels and anisotropic refinement ratios).
     """
     base_dims = ds.domain_dimensions  # level-0 cell counts
     nx0, ny0, nz0 = base_dims
 
     domain_left = ds.domain_left_edge.v
-    domain_width = ds.domain_width.v
+    dx0 = ds.domain_width.v[0] / nx0
+    dz0 = ds.domain_width.v[2] / nz0
 
     out = np.zeros((nx0, nz0))
     field_tuple = ("boxlib", field_name)
@@ -67,25 +71,21 @@ def composite_particle_count(ds, field_name):
             data = np.array(grid[field_tuple])  # (gx, gy, gz)
             jy_mid = data.shape[1] // 2
             grid_slice = data[:, jy_mid, :]  # midslice in y -> (gx, gz)
+            gx, gz = grid_slice.shape
 
             left = grid.LeftEdge.v
             right = grid.RightEdge.v
-            i0 = int(np.round((left[0] - domain_left[0]) / domain_width[0] * nx0))
-            i1 = int(np.round((right[0] - domain_left[0]) / domain_width[0] * nx0))
-            k0 = int(np.round((left[2] - domain_left[2]) / domain_width[2] * nz0))
-            k1 = int(np.round((right[2] - domain_left[2]) / domain_width[2] * nz0))
+            dx_fine = (right[0] - left[0]) / gx
+            dz_fine = (right[2] - left[2]) / gz
 
-            target_nx = i1 - i0
-            target_nz = k1 - k0
+            # Map each fine cell center to its L0 parent index
+            xc = left[0] + (np.arange(gx) + 0.5) * dx_fine
+            zc = left[2] + (np.arange(gz) + 0.5) * dz_fine
+            ic = np.clip(((xc - domain_left[0]) / dx0).astype(int), 0, nx0 - 1)
+            kc = np.clip(((zc - domain_left[2]) / dz0).astype(int), 0, nz0 - 1)
 
-            if grid_slice.shape[0] == target_nx and grid_slice.shape[1] == target_nz:
-                out[i0:i1, k0:k1] += grid_slice
-            else:
-                # Fine grid: sum fine cells into coarse cells
-                rx = grid_slice.shape[0] // target_nx
-                rz = grid_slice.shape[1] // target_nz
-                coarse = grid_slice.reshape(target_nx, rx, target_nz, rz).sum(axis=(1, 3))
-                out[i0:i1, k0:k1] += coarse
+            # Accumulate fine cell values into their L0 parents
+            np.add.at(out, (ic[:, None], kc[None, :]), grid_slice)
 
     return out
 
@@ -93,17 +93,17 @@ def composite_particle_count(ds, field_name):
 def get_fine_mesh_segments(ds):
     """Extract terrain-following mesh line segments for fine AMR levels.
 
-    Returns a list of (x_arr, z_arr) polyline pairs for each cell edge
-    on levels > 0.
+    Returns a dict mapping level -> list of (x_arr, z_arr) polyline pairs.
     """
     if ds.max_level == 0:
-        return []
+        return {}
 
     has_terrain = ("boxlib", "z_phys") in ds.field_list
-    segments = []
+    segments = {}  # level -> [(x_arr, z_arr), ...]
     field_tuple = ("boxlib", "z_phys") if has_terrain else None
 
     for level in range(1, ds.max_level + 1):
+        level_segs = []
         grids = [g for g in ds.index.grids if g.Level == level]
         for grid in grids:
             if has_terrain:
@@ -123,7 +123,6 @@ def get_fine_mesh_segments(ds):
 
             left = grid.LeftEdge.v
             right = grid.RightEdge.v
-            dx_fine = (right[0] - left[0]) / gx
 
             # x cell edges
             x_edges = np.linspace(left[0], right[0], gx + 1)
@@ -138,14 +137,16 @@ def get_fine_mesh_segments(ds):
             # Horizontal lines (constant k)
             z_edges_ext = np.vstack([z_edges, z_edges[-1:, :]])
             for k in range(gz + 1):
-                segments.append((x_edges, z_edges_ext[:, k]))
+                level_segs.append((x_edges, z_edges_ext[:, k]))
 
             # Vertical lines (constant i)
             for i in range(gx + 1):
                 if i < gx:
-                    segments.append((np.full(gz + 1, x_edges[i]), z_edges[i, :]))
+                    level_segs.append((np.full(gz + 1, x_edges[i]), z_edges[i, :]))
                 else:
-                    segments.append((np.full(gz + 1, x_edges[i]), z_edges[-1, :]))
+                    level_segs.append((np.full(gz + 1, x_edges[i]), z_edges[-1, :]))
+
+        segments[level] = level_segs
 
     return segments
 
@@ -215,6 +216,7 @@ def load_snapshot(pltdir):
         tracer_count=tc,
         has_particles=has_particles,
         fine_mesh=fine_mesh,
+        max_level=ds.max_level,
         px=px, pz=pz,
         time=time, step=step,
         prob_lo=ds.domain_left_edge.v,
@@ -238,7 +240,9 @@ def plot_snapshot(data, outpath):
     nrows = 3 if has_particles else 2
     figheight = 10 if has_particles else 7
     fig, axes = plt.subplots(nrows, 2, figsize=(20, figheight), sharex=True, sharey=True)
-    fig.suptitle(f"Step {data['step']},  t = {data['time']:.4f} s", fontsize=14)
+    max_lev = data.get("max_level", 0)
+    lev_str = f",  AMR levels = {max_lev + 1}" if max_lev > 0 else ""
+    fig.suptitle(f"Step {data['step']},  t = {data['time']:.4f} s{lev_str}", fontsize=14)
 
     x_cc    = data["x_cc"]
     z_phys  = data["z_phys"]
@@ -263,10 +267,16 @@ def plot_snapshot(data, outpath):
         ax.fill_between(x_cc, 0, terrain, color="saddlebrown", alpha=0.9, zorder=5)
         ax.plot(x_cc, terrain, color="black", linewidth=0.8, zorder=6)
 
+    # Per-level colors for fine mesh overlay
+    _level_colors = ["blue", "red", "green", "orange", "purple"]
+
     def add_fine_mesh(ax):
-        fine_kw = dict(color="blue", linewidth=0.15, alpha=0.4, zorder=3)
-        for x_seg, z_seg in data.get("fine_mesh", []):
-            ax.plot(x_seg, z_seg, **fine_kw)
+        fine_mesh = data.get("fine_mesh", {})
+        for level, segs in fine_mesh.items():
+            color = _level_colors[(level - 1) % len(_level_colors)]
+            kw = dict(color=color, linewidth=0.15, alpha=0.4, zorder=3)
+            for x_seg, z_seg in segs:
+                ax.plot(x_seg, z_seg, **kw)
 
     def add_colorbar(ax, pcm):
         divider = make_axes_locatable(ax)
