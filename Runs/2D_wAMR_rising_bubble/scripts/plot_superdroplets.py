@@ -167,8 +167,10 @@ def get_midplane_slice(ds, field_name):
         for grid_idx, grid in enumerate(grids_at_level):
             # Extract data directly from this grid
             grid_data = np.array(grid[field_tuple])  # Shape: (nx, ny, nz)
-            y_mid_idx = grid_data.shape[1] // 2
-            grid_slice = grid_data[:, y_mid_idx, :].T  # Shape: (nz, nx)
+            # Average over y for quasi-2D cases: a single y-index can miss
+            # particle deposition zones at fine AMR levels where CIC weights
+            # don't land on the geometric midplane.
+            grid_slice = grid_data.mean(axis=1).T  # Shape: (nz, nx)
 
             # Debug: check if grid has data
             if max_level > 0 and grid_idx == 0:
