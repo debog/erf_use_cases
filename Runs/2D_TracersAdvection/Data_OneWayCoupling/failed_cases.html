@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>One-Way Coupling: Failed Cases</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 0; background: #fff; color: #222; }
+  .slide { padding: 30px 40px; border-bottom: 3px solid #999; }
+  .slide:nth-child(even) { background: #f5f5f5; }
+  h1 { text-align: center; padding: 40px 0; font-size: 2em; }
+  h2 { color: #c00; margin-bottom: 5px; }
+  .info { color: #555; margin-bottom: 15px; font-size: 0.95em; }
+  .info code { background: #eee; padding: 2px 6px; border-radius: 3px; color: #07a; }
+  .snapshots { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; max-width: 2970px; margin: 0 auto; }
+  .snapshots img { width: 100%; height: auto; border: 1px solid #ccc; }
+
+  @page { size: 1016mm 571mm; margin: 0; }
+  @media print {
+    body { margin: 0; }
+    .slide { page-break-after: always; page-break-inside: avoid;
+             height: 571mm; width: 1016mm; box-sizing: border-box;
+             border-bottom: none; overflow: hidden; }
+    .slide:last-child { page-break-after: auto; }
+    .snapshots { max-width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="slide" id="top">
+  <h1>One-Way Coupling: Failed Cases (2026-04-08)</h1>
+  <p style="text-align:center; color:#555;">Branch: dg/particles_w_AMR &mdash; 6 of 7 terrain AMR cases failed (all flat-terrain cases pass)<br>
+  All failures are due to incorrect coarse-fine interpolation in terrain-following coordinates.</p>
+</div>
+
+<!-- Case 1 -->
+<div class="slide" id="s1">
+  <h2>1. Terrain (WoA), AMR1, box_fullz</h2>
+  <p class="info">
+    Input: <code>inputs_over_hill_AMR1_box_fullz</code><br>
+    Negative density at coarse step 373 on L1.
+    Static box covers full z-extent with 1 refined level (ratio 2,1,2).
+    Unlike two-way coupling where this case passed (averaging-down partially stabilized
+    the solution), one-way coupling lacks that feedback and the instability grows
+    until density goes negative at cell (304, 0, 0) with rho = -0.346.<br><br>
+    Backtrace: <code>amrex::Abort</code> called from
+    <code>ERF::check_for_negative_theta</code> (<code>ERF.cpp:3237</code>)
+    after <code>ERF::Advance</code> (<code>ERF_Advance.cpp:269</code>).
+    Message: "Bad rho in check_for_negative_theta".
+  </p>
+  <div class="snapshots">
+    <img src=".run_ParticleWoA_AMR1_box_fullz.desktop.nproc00002/plots/snapshot_00000.png">
+    <img src=".run_ParticleWoA_AMR1_box_fullz.desktop.nproc00002/plots/snapshot_00120.png">
+    <img src=".run_ParticleWoA_AMR1_box_fullz.desktop.nproc00002/plots/snapshot_00240.png">
+    <img src=".run_ParticleWoA_AMR1_box_fullz.desktop.nproc00002/plots/snapshot_00360.png">
+  </div>
+</div>
+
+<!-- Case 2 -->
+<div class="slide" id="s2">
+  <h2>2. Terrain (WoA), AMR1, box_partialz</h2>
+  <p class="info">
+    Input: <code>inputs_over_hill_AMR1_box_partialz</code><br>
+    FPE (floating-point exception) at coarse step 305 during L1 time integration.
+    Static box covers partial z-extent with terrain-following coordinates.
+    The index-space interpolation at the top of the refined region assumes uniform
+    z-spacing, producing incorrect values that grow into the flow field.<br><br>
+    Backtrace: signal caught in <code>powf64</code> (libm) called from
+    <code>ERF_TI_utils.H:41</code> inside the slow RHS lambda of
+    <code>advance_dycore</code> &rarr; <code>ERF_TI_slow_rhs_pre.H:26</code>.
+    The FPE occurs when NaN/Inf values from the C-F boundary reach the
+    exponentiation in the RHS computation.
+  </p>
+  <div class="snapshots">
+    <img src=".run_ParticleWoA_AMR1_box_partialz.desktop.nproc00002/plots/snapshot_00000.png">
+    <img src=".run_ParticleWoA_AMR1_box_partialz.desktop.nproc00002/plots/snapshot_00100.png">
+    <img src=".run_ParticleWoA_AMR1_box_partialz.desktop.nproc00002/plots/snapshot_00200.png">
+    <img src=".run_ParticleWoA_AMR1_box_partialz.desktop.nproc00002/plots/snapshot_00300.png">
+  </div>
+</div>
+
+<!-- Case 3 -->
+<div class="slide" id="s3">
+  <h2>3. Terrain (WoA), AMR1, particlecount</h2>
+  <p class="info">
+    Input: <code>inputs_over_hill_AMR1_particlecount</code><br>
+    Memory corruption ("corrupted size vs. prev_size") at coarse step 100.
+    Dynamic particle-count tagging with terrain-following coordinates.
+    The refined region moves with the particles, and the coarse-fine interpolation
+    for newly created fine cells uses incorrect z-offsets.<br><br>
+    Backtrace: SIGABRT from heap corruption. The heap was corrupted by prior
+    bad data from terrain C-F interpolation; the crash manifests during memory
+    operations after the flow state has already been corrupted by incorrect
+    coarse-fine interpolation in terrain-following coordinates.
+  </p>
+  <div class="snapshots">
+    <img src=".run_ParticleWoA_AMR1_particlecount.desktop.nproc00002/plots/snapshot_00000.png">
+    <img src=".run_ParticleWoA_AMR1_particlecount.desktop.nproc00002/plots/snapshot_00020.png">
+    <img src=".run_ParticleWoA_AMR1_particlecount.desktop.nproc00002/plots/snapshot_00040.png">
+    <img src=".run_ParticleWoA_AMR1_particlecount.desktop.nproc00002/plots/snapshot_00080.png">
+  </div>
+</div>
+
+<!-- Case 4 -->
+<div class="slide" id="s4">
+  <h2>4. Terrain (WoA), AMR2, box_fullz</h2>
+  <p class="info">
+    Input: <code>inputs_over_hill_AMR2_box_fullz</code><br>
+    FPE at coarse step 87 during L2 time integration.
+    Two refined levels with terrain-following coordinates and full-z box coverage.
+    Even with full-z coverage, 2 levels of refinement amplify the interpolation error
+    enough to crash early.<br><br>
+    Backtrace: signal caught in <code>powf64</code> (libm) called from
+    <code>ERF_TI_utils.H:41</code> inside the slow RHS lambda of
+    <code>advance_dycore</code> &rarr; <code>ERF_TI_slow_rhs_pre.H:26</code>.
+    NaN/Inf from incorrect terrain C-F interpolation propagates into the RHS.
+  </p>
+  <div class="snapshots">
+    <img src=".run_ParticleWoA_AMR2_box_fullz.desktop.nproc00002/plots/snapshot_00000.png">
+    <img src=".run_ParticleWoA_AMR2_box_fullz.desktop.nproc00002/plots/snapshot_00020.png">
+    <img src=".run_ParticleWoA_AMR2_box_fullz.desktop.nproc00002/plots/snapshot_00060.png">
+    <img src=".run_ParticleWoA_AMR2_box_fullz.desktop.nproc00002/plots/snapshot_00080.png">
+  </div>
+</div>
+
+<!-- Case 5 -->
+<div class="slide" id="s5">
+  <h2>5. Terrain (WoA), AMR2, box_partialz</h2>
+  <p class="info">
+    Input: <code>inputs_over_hill_AMR2_box_partialz</code><br>
+    FPE at coarse step 73 during L2 time integration.
+    Earliest failure of all one-way coupling cases. Partial-z box + terrain + 2 refined
+    levels is the most challenging configuration for the interpolation.<br><br>
+    Backtrace: signal caught in <code>powf64</code> (libm) called from
+    <code>ERF_TI_utils.H:41</code> inside the slow RHS lambda of
+    <code>advance_dycore</code> &rarr; <code>ERF_TI_slow_rhs_pre.H:26</code>.
+    Fails earliest because partial-z + terrain maximizes the z-offset error
+    in the coarse-fine interpolation.
+  </p>
+  <div class="snapshots">
+    <img src=".run_ParticleWoA_AMR2_box_partialz.desktop.nproc00002/plots/snapshot_00000.png">
+    <img src=".run_ParticleWoA_AMR2_box_partialz.desktop.nproc00002/plots/snapshot_00020.png">
+    <img src=".run_ParticleWoA_AMR2_box_partialz.desktop.nproc00002/plots/snapshot_00040.png">
+    <img src=".run_ParticleWoA_AMR2_box_partialz.desktop.nproc00002/plots/snapshot_00060.png">
+  </div>
+</div>
+
+<!-- Case 6 -->
+<div class="slide" id="s6">
+  <h2>6. Terrain (WoA), AMR2, particlecount</h2>
+  <p class="info">
+    Input: <code>inputs_over_hill_AMR2_particlecount</code><br>
+    Memory corruption ("corrupted size vs. prev_size") at coarse step 100.
+    Dynamic tagging + terrain + 2 refined levels. Crashes during memory operations
+    after the flow state has been corrupted by incorrect coarse-fine interpolation.<br><br>
+    Backtrace: SIGABRT from heap corruption. Same root cause as case 3 but with
+    an additional AMR level. The heap corruption originates from bad data produced
+    by index-space interpolation kernels that assume uniform z-spacing in
+    terrain-following coordinates.
+  </p>
+  <div class="snapshots">
+    <img src=".run_ParticleWoA_AMR2_particlecount.desktop.nproc00002/plots/snapshot_00000.png">
+    <img src=".run_ParticleWoA_AMR2_particlecount.desktop.nproc00002/plots/snapshot_00020.png">
+    <img src=".run_ParticleWoA_AMR2_particlecount.desktop.nproc00002/plots/snapshot_00060.png">
+    <img src=".run_ParticleWoA_AMR2_particlecount.desktop.nproc00002/plots/snapshot_00080.png">
+  </div>
+</div>
+
+</body>
+</html>

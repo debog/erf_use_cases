@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Two-Way Coupling: Failed Cases</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 0; background: #fff; color: #222; }
+  .slide { padding: 30px 40px; border-bottom: 3px solid #999; }
+  .slide:nth-child(even) { background: #f5f5f5; }
+  h1 { text-align: center; padding: 40px 0; font-size: 2em; }
+  h2 { color: #c00; margin-bottom: 5px; }
+  .info { color: #555; margin-bottom: 15px; font-size: 0.95em; }
+  .info code { background: #eee; padding: 2px 6px; border-radius: 3px; color: #07a; }
+  .snapshots { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; max-width: 2970px; margin: 0 auto; }
+  .snapshots img { width: 100%; height: auto; border: 1px solid #ccc; }
+
+  @page { size: 1016mm 571mm; margin: 0; }
+  @media print {
+    body { margin: 0; }
+    .slide { page-break-after: always; page-break-inside: avoid;
+             height: 571mm; width: 1016mm; box-sizing: border-box;
+             border-bottom: none; overflow: hidden; }
+    .slide:last-child { page-break-after: auto; }
+    .snapshots { max-width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="slide" id="top">
+  <h1>Two-Way Coupling: Failed Cases (2026-04-08)</h1>
+  <p style="text-align:center; color:#555;">Branch: dg/particles_w_AMR &mdash; 7 of 14 AMR cases failed<br>
+  All failures are flow instabilities at coarse-fine boundaries.</p>
+</div>
+
+<!-- Case 1 -->
+<div class="slide" id="s1">
+  <h2>1. Flat terrain, AMR2, box_fullz</h2>
+  <p class="info">
+    Input: <code>inputs_over_flat_AMR2_box_fullz</code><br>
+    FPE (floating-point exception) at coarse step 237 during L2 time integration.
+    Static box covers full z-extent with 2 refined levels (ratio 2,1,2 each).
+    Flow develops spurious oscillations at the L2 coarse-fine boundary.<br><br>
+    Backtrace: signal caught in <code>powf64</code> (libm) called from
+    <code>ERF_TI_utils.H:41</code> inside the slow RHS lambda of
+    <code>advance_dycore</code> &rarr; <code>ERF_TI_slow_rhs_pre.H:26</code>
+    &rarr; <code>ERF_MRI.H:277</code> (MRI split integrator).
+    The FPE occurs when NaN/Inf values from the C-F boundary reach the
+    exponentiation in the RHS computation.
+  </p>
+  <div class="snapshots">
+    <img src=".run_ParticleFlat_AMR2_box_fullz.desktop.nproc00002/plots/snapshot_00000.png">
+    <img src=".run_ParticleFlat_AMR2_box_fullz.desktop.nproc00002/plots/snapshot_00080.png">
+    <img src=".run_ParticleFlat_AMR2_box_fullz.desktop.nproc00002/plots/snapshot_00160.png">
+    <img src=".run_ParticleFlat_AMR2_box_fullz.desktop.nproc00002/plots/snapshot_00220.png">
+  </div>
+</div>
+
+<!-- Case 2 -->
+<div class="slide" id="s2">
+  <h2>2. Flat terrain, AMR2, box_partialz</h2>
+  <p class="info">
+    Input: <code>inputs_over_flat_AMR2_box_partialz</code><br>
+    Negative density at coarse step 332 on L2.
+    Static box covers partial z-extent with 2 refined levels.
+    Instability grows at the L2 boundary until density goes negative.<br><br>
+    Backtrace: <code>amrex::Abort</code> called from
+    <code>ERF::check_for_negative_theta</code> (<code>ERF.cpp:3237</code>)
+    after <code>ERF::Advance</code> (<code>ERF_Advance.cpp:269</code>).
+    Message: "Bad rho in check_for_negative_theta" &mdash; negative density at
+    cell (613, 0, 37) with rho = -0.469.
+  </p>
+  <div class="snapshots">
+    <img src=".run_ParticleFlat_AMR2_box_partialz.desktop.nproc00002/plots/snapshot_00000.png">
+    <img src=".run_ParticleFlat_AMR2_box_partialz.desktop.nproc00002/plots/snapshot_00100.png">
+    <img src=".run_ParticleFlat_AMR2_box_partialz.desktop.nproc00002/plots/snapshot_00220.png">
+    <img src=".run_ParticleFlat_AMR2_box_partialz.desktop.nproc00002/plots/snapshot_00320.png">
+  </div>
+</div>
+
+<!-- Case 3 -->
+<div class="slide" id="s3">
+  <h2>3. Terrain (WoA), AMR1, box_partialz</h2>
+  <p class="info">
+    Input: <code>inputs_over_hill_AMR1_box_partialz</code><br>
+    Heap corruption at coarse step 100.
+    Terrain-following coordinates with partial-z refined box.
+    Index-space interpolation at the top of the refined region produces incorrect values
+    because it assumes uniform z-spacing.<br><br>
+    Backtrace: "free(): invalid next size (fast)" triggered during
+    <code>ERF::Write3DPlotFile</code> (<code>ERF_Plotfile.cpp:1473</code>)
+    &rarr; <code>__libc_free</code>. The heap corruption originates earlier
+    during time integration; the plotfile writer merely triggers it when
+    freeing memory. The flow had already been corrupted by bad C-F interpolation.
+  </p>
+  <div class="snapshots">
+    <img src=".run_ParticleWoA_AMR1_box_partialz.desktop.nproc00002/plots/snapshot_00000.png">
+    <img src=".run_ParticleWoA_AMR1_box_partialz.desktop.nproc00002/plots/snapshot_00020.png">
+    <img src=".run_ParticleWoA_AMR1_box_partialz.desktop.nproc00002/plots/snapshot_00060.png">
+    <img src=".run_ParticleWoA_AMR1_box_partialz.desktop.nproc00002/plots/snapshot_00080.png">
+  </div>
+</div>
+
+<!-- Case 4 -->
+<div class="slide" id="s4">
+  <h2>4. Terrain (WoA), AMR1, particlecount</h2>
+  <p class="info">
+    Input: <code>inputs_over_hill_AMR1_particlecount</code><br>
+    Segfault at coarse step 61 during regrid.
+    Dynamic particle-count tagging with terrain-following coordinates.
+    The refined region moves with the particles, and the coarse-fine interpolation
+    for newly created fine cells uses incorrect z-offsets.<br><br>
+    Backtrace: segfault in <code>FabArrayBase::getCPC</code>
+    (<code>AMReX_FabArrayBase.cpp:593</code>) during
+    <code>ParallelAdd</code> inside <code>IncrementWithTotal</code>,
+    called from <code>ERF::ErrorEst</code> (<code>ERF_Tagging.cpp:301</code>)
+    &rarr; <code>AmrMesh::MakeNewGrids</code> &rarr;
+    <code>AmrCore::regrid</code>.
+    Crash occurs during particle count deposition for the tagging criterion.
+  </p>
+  <div class="snapshots">
+    <img src=".run_ParticleWoA_AMR1_particlecount.desktop.nproc00002/plots/snapshot_00000.png">
+    <img src=".run_ParticleWoA_AMR1_particlecount.desktop.nproc00002/plots/snapshot_00020.png">
+    <img src=".run_ParticleWoA_AMR1_particlecount.desktop.nproc00002/plots/snapshot_00040.png">
+    <img src=".run_ParticleWoA_AMR1_particlecount.desktop.nproc00002/plots/snapshot_00060.png">
+  </div>
+</div>
+
+<!-- Case 5 -->
+<div class="slide" id="s5">
+  <h2>5. Terrain (WoA), AMR2, box_fullz</h2>
+  <p class="info">
+    Input: <code>inputs_over_hill_AMR2_box_fullz</code><br>
+    FPE at coarse step 85 during L2 time integration.
+    Two refined levels with terrain-following coordinates.
+    Even with full-z box coverage, 2 levels of refinement amplify the interpolation error.<br><br>
+    Backtrace: same as case 1 &mdash; signal in <code>powf64</code> (libm) from
+    <code>ERF_TI_utils.H:41</code> &rarr; <code>ERF_TI_slow_rhs_pre.H:26</code>
+    &rarr; <code>ERF_MRI.H:277</code> &rarr; <code>ERF_AdvanceDycore.cpp:356</code>
+    &rarr; <code>ERF_Advance.cpp:249</code>.
+    NaN/Inf from incorrect terrain C-F interpolation propagates into the RHS.
+  </p>
+  <div class="snapshots">
+    <img src=".run_ParticleWoA_AMR2_box_fullz.desktop.nproc00002/plots/snapshot_00000.png">
+    <img src=".run_ParticleWoA_AMR2_box_fullz.desktop.nproc00002/plots/snapshot_00020.png">
+    <img src=".run_ParticleWoA_AMR2_box_fullz.desktop.nproc00002/plots/snapshot_00060.png">
+    <img src=".run_ParticleWoA_AMR2_box_fullz.desktop.nproc00002/plots/snapshot_00080.png">
+  </div>
+</div>
+
+<!-- Case 6 -->
+<div class="slide" id="s6">
+  <h2>6. Terrain (WoA), AMR2, box_partialz</h2>
+  <p class="info">
+    Input: <code>inputs_over_hill_AMR2_box_partialz</code><br>
+    FPE at coarse step 36 during L2 time integration.
+    Earliest failure of all cases. Partial-z box + terrain + 2 refined levels
+    is the most challenging configuration for the interpolation.
+    Only 2 plotfiles were written before the crash.<br><br>
+    Backtrace: same as cases 1 and 5 &mdash; <code>powf64</code> &rarr;
+    <code>ERF_TI_utils.H:41</code> &rarr; <code>ERF_TI_slow_rhs_pre.H:26</code>
+    &rarr; <code>ERF_MRI.H:277</code> &rarr; <code>ERF_AdvanceDycore.cpp:356</code>.
+    Fails earliest because partial-z + terrain maximizes the z-offset error
+    in the coarse-fine interpolation.
+  </p>
+  <div class="snapshots">
+    <img src=".run_ParticleWoA_AMR2_box_partialz.desktop.nproc00002/plots/snapshot_00000.png">
+    <img src=".run_ParticleWoA_AMR2_box_partialz.desktop.nproc00002/plots/snapshot_00020.png">
+  </div>
+</div>
+
+<!-- Case 7 -->
+<div class="slide" id="s7">
+  <h2>7. Terrain (WoA), AMR2, particlecount</h2>
+  <p class="info">
+    Input: <code>inputs_over_hill_AMR2_particlecount</code><br>
+    Heap corruption at coarse step 101 during regrid.
+    Dynamic tagging + terrain + 2 refined levels. Crashes during level remeshing
+    when coarse-fine interpolation fills newly created fine cells with bad data.<br><br>
+    Backtrace: "munmap_chunk(): invalid pointer" in <code>__libc_free</code>
+    called from <code>FabArrayBase::flushFB</code>
+    (<code>AMReX_FabArrayBase.cpp:1272</code>) during
+    <code>ParticleContainerBase::RedefineDummyMF</code>
+    (<code>AMReX_ParticleContainerBase.cpp:68</code>) &rarr;
+    <code>RedistributeCPU</code> &rarr;
+    <code>ERFPC::FixKIndexAMR</code> (<code>ERFPCUtils.cpp:174</code>).
+    Heap was corrupted by prior bad data from terrain C-F interpolation;
+    the particle redistribute after regrid triggers the crash.
+  </p>
+  <div class="snapshots">
+    <img src=".run_ParticleWoA_AMR2_particlecount.desktop.nproc00002/plots/snapshot_00000.png">
+    <img src=".run_ParticleWoA_AMR2_particlecount.desktop.nproc00002/plots/snapshot_00040.png">
+    <img src=".run_ParticleWoA_AMR2_particlecount.desktop.nproc00002/plots/snapshot_00080.png">
+    <img src=".run_ParticleWoA_AMR2_particlecount.desktop.nproc00002/plots/snapshot_00100.png">
+  </div>
+</div>
+
+</body>
+</html>
