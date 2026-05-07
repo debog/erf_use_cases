@@ -4,8 +4,9 @@
 Usage: python plot_snapshots.py <run_dir>
 
 Each plotfile produces a figure with two subplots:
-  Left:  Eulerian tracer_particles_count on terrain-following mesh
+  Left:  Eulerian tracer_particles_mass_density on terrain-following mesh
   Right: Particle positions as scatter points on the same domain
+         (colored by particle z-velocity when available)
 
 Both subplots show the terrain surface.
 """
@@ -181,16 +182,19 @@ def load_snapshot(pltdir):
     z_vel    = cg0["boxlib", "z_velocity"].v[:, JY, :]
 
     # Check if tracer particle fields exist
-    has_particles = ("boxlib", "tracer_particles_count") in ds.field_list
+    has_particles = ("boxlib", "tracer_particles_mass_density") in ds.field_list
 
     tc = None
     px = np.array([])
     pz = np.array([])
+    pzvel = None
     if has_particles:
-        tc = composite_particle_count(ds, "tracer_particles_count")
+        tc = composite_particle_count(ds, "tracer_particles_mass_density")
         ad = ds.all_data()
         px = ad["all", "particle_position_x"].v
         pz = ad["all", "particle_position_z"].v
+        if ("all", "particle_zvel") in ds.field_list:
+            pzvel = ad["all", "particle_zvel"].v
 
     # Fine-level mesh segments for overlay
     fine_mesh = get_fine_mesh_segments(ds)
@@ -217,7 +221,7 @@ def load_snapshot(pltdir):
         has_particles=has_particles,
         fine_mesh=fine_mesh,
         max_level=ds.max_level,
-        px=px, pz=pz,
+        px=px, pz=pz, pzvel=pzvel,
         time=time, step=step,
         prob_lo=ds.domain_left_edge.v,
         prob_hi=ds.domain_right_edge.v,
@@ -230,7 +234,7 @@ def plot_snapshot(data, outpath):
     With particles (3x2):
       Row 0: density,              pressure
       Row 1: x-velocity,           z-velocity
-      Row 2: tracer particle count, particle positions
+      Row 2: tracer particle mass density, particle positions (colored by z-vel if available)
 
     Without particles (2x2):
       Row 0: density,              pressure
@@ -333,16 +337,16 @@ def plot_snapshot(data, outpath):
     format_ax(ax)
 
     if has_particles:
-        # --- (2,0) Tracer particle count ---
+        # --- (2,0) Tracer particle mass density ---
         ax = axes[2, 0]
         tc = data["tracer_count"]
-        tc_max = max(tc.max(), 1.0)
+        tc_max = tc.max() if tc.max() > 0 else 1.0
         pcm = ax.pcolormesh(X2, Z2, tc, cmap="YlOrRd", vmin=0, vmax=tc_max,
                             shading="flat")
         add_colorbar(ax, pcm)
         add_terrain(ax)
         add_fine_mesh(ax)
-        ax.set_title("Tracer particle count (Eulerian)")
+        ax.set_title("Tracer particle mass density (Eulerian)")
         ax.set_xlabel("x (m)")
         ax.set_ylabel("z (m)")
         format_ax(ax)
@@ -350,10 +354,22 @@ def plot_snapshot(data, outpath):
         # --- (2,1) Particle scatter ---
         ax = axes[2, 1]
         add_terrain(ax)
+        pzvel = data.get("pzvel")
         if len(data["px"]) > 0:
-            ax.scatter(data["px"], data["pz"], s=8, c="dodgerblue",
-                       edgecolors="navy", linewidths=0.3, zorder=10, alpha=0.8)
-        ax.set_title(f"Particle positions (N={len(data['px'])})")
+            if pzvel is not None:
+                vmax_pz = max(abs(pzvel.min()), abs(pzvel.max()), 1e-12)
+                sc = ax.scatter(data["px"], data["pz"], s=8, c=pzvel,
+                                cmap="RdBu_r", vmin=-vmax_pz, vmax=vmax_pz,
+                                edgecolors="black", linewidths=0.2,
+                                zorder=10, alpha=0.9)
+                add_colorbar(ax, sc)
+                ax.set_title(f"Particles colored by z-velocity (N={len(data['px'])})")
+            else:
+                ax.scatter(data["px"], data["pz"], s=8, c="dodgerblue",
+                           edgecolors="navy", linewidths=0.3, zorder=10, alpha=0.8)
+                ax.set_title(f"Particle positions (N={len(data['px'])})")
+        else:
+            ax.set_title(f"Particle positions (N={len(data['px'])})")
         ax.set_xlabel("x (m)")
         format_ax(ax)
 
@@ -365,18 +381,19 @@ def plot_snapshot(data, outpath):
 if __name__ == "__main__":
     num_plotted = 0
     num_skipped = 0
+    script_mtime = os.path.getmtime(__file__)
 
     for pdir in plt_dirs:
         step = int(re.search(r"plt(\d+)", pdir).group(1))
         outpath = os.path.join(OUT_DIR, f"snapshot_{step:05d}.png")
 
-        # Check if plot exists and is newer than the plotfile
+        # Regenerate if the plotfile or the script is newer than the PNG
         should_plot = True
         if os.path.exists(outpath):
-            plt_mtime = os.path.getmtime(pdir)
+            src_mtime = max(os.path.getmtime(pdir), script_mtime)
             plot_mtime = os.path.getmtime(outpath)
 
-            if plot_mtime > plt_mtime:
+            if plot_mtime > src_mtime:
                 # Plot is newer than data, skip it
                 should_plot = False
                 num_skipped += 1
